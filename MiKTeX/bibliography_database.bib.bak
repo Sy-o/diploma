@@ -1,0 +1,211 @@
+% This file was created with JabRef 2.9.2.
+% Encoding: utf8
+
+@ARTICLE{Lauritzen_Spiegelhalter88,
+  author = {Lauritzen, S. L. and Spiegelhalter, D. J.},
+  title = {{Local Computations with Probabilities on Graphical Structures and
+	Their Application to Expert Systems}},
+  journal = {Journal of the Royal Statistical Society. Series B (Methodological)},
+  year = {1988},
+  volume = {50},
+  number = {2},
+  abstract = {{A causal network is used in a number of areas as a depiction of patterns
+	of `influence' among sets of variables. In expert systems it is common
+	to perform `inference' by means of local computations on such large
+	but sparse networks. In general, non-probabilistic methods are used
+	to handle uncertainty when propagating the effects of evidence, and
+	it has appeared that exact probabilistic methods are not computationally
+	feasible. Motivated by an application in electromyography, we counter
+	this claim by exploiting a range of local representations for the
+	joint probability distribution, combined with topological changes
+	to the original network termed `marrying' and `filling-in'. The resulting
+	structure allows efficient algorithms for transfer between representations,
+	providing rapid absorption and propagation of evidence. The scheme
+	is first illustrated on a small, fictitious but challenging example,
+	and the underlying theory and computational aspects are then discussed.}},
+  citeulike-article-id = {236694},
+  citeulike-linkout-0 = {http://dx.doi.org/10.2307/2345762},
+  citeulike-linkout-1 = {http://www.jstor.org/stable/2345762},
+  doi = {10.2307/2345762},
+  issn = {00359246},
+  keywords = {bayesian-networks},
+  posted-at = {2005-06-25 05:09:56},
+  priority = {1},
+  publisher = {Blackwell Publishing for the Royal Statistical Society},
+  url = {http://dx.doi.org/10.2307/2345762}
+}
+@ARTICLE{dramsim2_manual,
+  author = {by Paul Rosenfeld, Elliott Cooper-Balis, Bruce Jacob},
+  year = {2011},
+  title = {DRAMSim2: A Cycle Accurate Memory System Simulator},
+  address = {California},
+  language = {english}
+}
+
+@ARTICLE{dramsim2_article,
+  author = {by Zhen Xie, Yang Zhang, Jun Yang, Longxing Shi},
+  month = {July},
+  year = {2014},
+  title = {An improved memory system simulator based on DRAMSim2},
+  address = {China},
+  language = {english}
+}
+
+@ARTICLE{ramulator_manual,
+  author = {by Yoongu Kim, Weikum Yang, Onur Mutlu},
+  year = {2015},
+  title = {Ramulator: A Fast and Extensible DRAM Simulator},
+  language = {english}
+}
+
+@ARTICLE{usimm_manual,
+  author = {Niladrish Chatterjee, Rajeev Balasubramonian,Manjunath Shevgoor, Seth H. Pugsley,Aniruddha N. Udipi, Ali Shafiee, Kshitij Sudan,Manu Awasthi, Zeshan Chishti},
+  month = {February},
+  year = {2012},
+  title = {USIMM: the Utah SImulated Memory Module},
+  language = {english}
+}
+
+@ARTICLE{drsim_manual,
+  author = {M. K. Jeong et al},
+  year = {2012},
+  title = {DrSim: A Platform for Flexible DRAM System Research},
+  language = {english}
+}
+
+@ARTICLE{ibm_dram_article,
+  author = {IBM Group},
+  year = {1996},
+  title = {Understanding DRAM Operation},
+  language = {english}
+}
+
+@INPROCEEDINGS{dram_tutorial,
+  author = {Bruce Jacob, David Wang},
+  title = {DRAM Tutorial},
+  booktitle = {DRAM: Architectures, Interfaces, and Systems},
+  year = {2002},
+  language = {english}
+}
+
+@BOOK{dram_book,
+  author = {by Andrew S. Tanenbaum, Todd Austin},
+  month = {December},
+  year = {2013},
+  title = {Structured Computer Organization - 6th ed.},
+  language = {english},
+  address = {Vrije Universiteit Amsterdam, The Netherlands},
+  pages = {747}
+}
+
+@BOOK{cpp_book,
+  author = {Бьёрн Страуструп},
+  year = {1999},
+  title = {Язык программирования С++ - 3-е изд.},
+  language = {russian},
+  publisher = {Невский диалект - Бином},
+  pages = {991}
+}
+
+@BOOK{cpp_book_two,
+  author = {Стивен Прата},
+  year = {2011},
+  title = {Язык программирования C++ (C++11). Лекции и упражнения - 6-е изд.},
+  language = {russian},
+  pages = {688}
+}
+
+@BOOK{conterfeit_integrated_circuits,
+  author = {by Mark(Mohammad) Tehranipoor, Ujjwal Guin, Domenic Forte},
+  year = {2015},
+  title = {Counterfeit Integrated Circuits- Detection and Avoidance},
+  language = {english},
+}
+
+@BOOK{sicp_2006_ru,
+  title = {Структура и интерпретация компьютерных программ},
+  publisher = {Добросвет},
+  year = {2006},
+  author = {Харольд Абельсон and Джеральд Джей Сассман and Джули Сассман},
+  pages = {608},
+  language = {russian},
+  owner = {mstyura},
+  timestamp = {2013.03.20}
+}
+
+@ARTICLE{design_and_verification_report_2013,
+  author = {S.Sikand},
+  title = {Design and verification report 2013, Design Reuse, Verification Reuse and Dependency Management, IC Manage},
+  year = {2013},
+  month = {December}
+}
+
+@BOOK{trpr_2011_ru,
+  title = {Язык программирования Ruby = The Ruby Programming Language},
+  year = {2011},
+  author = {Д. Флэнаган, Ю. Мацумото},
+  pages = {496},
+  address = {СПБ},
+  language = {russian}
+}
+
+
+@ARTICLE{obfuscation_soc_design,
+  author = {Rajat Subhra Chakraborty, Yu Zheng and Swarup Bhunia},
+  title = {Obfuscation-Based Secure SoC Design for Protection Against Piracy and Trojan Attacks},
+  year = {2009},
+  language = {english},
+  owner = {mstyura},
+}
+
+
+@INPROCEEDINGS{obf_as_int_rights_prot_in_vhdl,
+  author = {M. Brzozowski, V. Yarmolik},
+  title = {6th International Conference on Computer Information Systems and Industrial Management Applications},
+  booktitle = {Obfuscation as intellectual rights protection in VHDL language},
+  month = {June},
+  year = {2007},
+  language = {english},
+  publisher = {Addison-Wesley Professional},
+  owner = {mstyura},
+}
+
+@INPROCEEDINGS{rtl_hardware_ip_protection,
+  author = {R. Chakraborty, S. Bhunia},
+  title = {23rd International Conference on VLSI Design},
+  booktitle = {RTL hardware IP protection using key-based control and data flow obfuscation},
+  month = {Jan},
+  year = {2010},
+  language = {english},
+  publisher = {Addison-Wesley Professional},
+  owner = {mstyura},
+}
+@BOOK{collberg,
+  author = {C. Collberg},
+  title = {A Taxonomy of Obfuscating Transformations},
+  publisher = {Auckland: Department of Computer Science},
+  year = {1997},
+  pages= {36}
+}
+@BOOk{ivaniuk,
+  author = {А.А. Иванюк},
+  title = {Проектирование встраиваемых цифровых устройств и систем : монография},
+  year = {2012},
+  publisher = {Бестпринт},
+  language = {russian},
+  address = {Минск},
+  pages = {337}
+}
+
+@ARTICLE{sergeichik_ivaniuk,
+  author = {В.В. Сергейчик, А.А. Иванюк},
+  title = {Особенности обфускации vhdl-описаний и методы оценки её сложности},
+  year = {2014},
+  month = {январь-март},
+  publisher = {Белорусский государственный университет информатики и радиоэлектроники}
+}
+
+
+
+Evgeny
+R. Chakraborty, S. Bhunia, RTL hardware IP protection using key-based control and data ﬂow obfuscation, in 23rd International Conference on VLSI Design, 2010. VLSID ’10, Jan 2010, pp. 405–410
