@@ -66,14 +66,9 @@
 \FPeval{\socialProtectionCostExact}{clip( (\totalSalary + \additionalSalary) * \socialProtectionFund / 100 )}
 \FPround{\socialProtectionCost}{\socialProtectionCostExact}{0}
 
-\FPeval{\taxWorkProtNormative}{4}
-\FPeval{\taxWorkProtCostExact}{clip( (\totalSalary + \additionalSalary) * \taxWorkProtNormative / 100 )}
-\FPround{\taxWorkProtCost}{\taxWorkProtCostExact}{0}
-\FPeval{\taxWorkProtCost}{0} % это считать не нужно, зануляем чтобы не менять формулы
-
 \FPeval{\stuffNormative}{3}
 \FPeval{\stuffCostExact}{clip( \totalSalary * \stuffNormative / 100 )}
-\FPround{\stuffCost}{\stuffCostExact}
+\FPround{\stuffCost}{\stuffCostExact}{0}
 
 \FPeval{\timeToDebugCodeNormative}{15}
 %\FPeval{\reducingTimeToDebugFactor}{0.3} %?
@@ -96,7 +91,7 @@
 \FPeval{\overallCostExact}{clip( \totalSalary * \overheadCostNormative / 100 )}
 \FPround{\overheadCost}{\overallCostExact}{0}
 
-\FPeval{\overallCost}{clip( \totalSalary + \additionalSalary + \socialProtectionCost + \taxWorkProtCost + \stuffCost + \machineTimeCost + \businessTripCost + \otherCost + \overheadCost ) }
+\FPeval{\overallCost}{clip( \totalSalary + \additionalSalary + \socialProtectionCost + \stuffCost + \machineTimeCost + \businessTripCost + \otherCost + \overheadCost ) } 
 
 \FPeval{\supportNormative}{30}
 \FPeval{\softwareSupportCostExact}{clip( \overallCost * \supportNormative / 100 )}
@@ -482,46 +477,49 @@
          {100\%} \approx \SI{\additionalSalary}{\text{\byr}} \text{\,.}
 \end{equation}
 
-\begin{table}[!ht]
-  \caption{Расчет себестоимости и отпускной цены ПО}
-  \label{table:econ:calculation_cost_and_price}
-  \begin{tabular}{| >{\raggedright}m{0.27\textwidth}
+Расчеты общей суммы расходов и прогнозируемой цены ПО, а также его себестоимости сведены в таблицу~\ref{table:econ:calculation_cost_and_price}.
+
+\begin{longtable}{| >{\raggedright}m{0.27\textwidth}
                   | >{\centering}m{0.16\textwidth}
                   | >{\centering}m{0.35\textwidth}
                   | >{\centering\arraybackslash}m{0.15\textwidth}|}
-   \hline
-     {\begin{center}
+  \caption{Расчет себестоимости и отпускной цены ПО}
+  \label{table:econ:calculation_cost_and_price}
+   
+  \hline
+    {\begin{center}
        Наименование статей 
-    \end{center} } & Норматив & Методика расчета & \mbox{Значение,} руб. \\
+    \end{center} } & \mbox{Норматив,} \% & Методика расчета & \mbox{Значение,} руб. \\
    \hline
    Отчисления в фонд социальной защиты и обязательного страхования 
-   & $ \text{Н}_{\text{сз}} = \num{\socialProtectionFund\%} $ 
+   & $ \text{Н}_{\text{сз}} = \num{\socialProtectionFund} $ 
    & $ \text{З}_{\text{сз}} = (\text{З}_{\text{о}} + \text{З}_{\text{д}}) \cdot \text{Н}_{\text{сз}} / {\num{100}} $
    & \num{\socialProtectionCost}\\
    \hline
    Материалы и комплектующие
-   & $ \text{Н}_{\text{мз}} = \num{\stuffNormative\%} $
+   & $ \text{Н}_{\text{мз}} = \num{\stuffNormative} $
    & $\text{М} = { \text{З}_{\text{о}} \cdot \text{Н}_{\text{мз}} } / { \num{100} } $
    & \num{\stuffCost} \\
    \hline
    Машинное время 
-   & $ \text{Н}_{\text{мв}} = \num{\timeToDebugCodeNormative} $
+   &
    & $ \text{Р}_{\text{м}} = \text{Ц}_{\text{м}} \cdot \text{V}_{\text{о}} / \num{100} \cdot \text{Н}_{\text{мв}} $
+   $ \text{Н}_{\text{мв}} = \num{\timeToDebugCodeNormative}{\text{ машино-часов}}$
    $ \text{Ц}_{\text{м}} = \SI{\oneHourMachineTimeCost}{\text{\byr}} $ 
    & \num{\machineTimeCost} \\
    \hline
    Расходы на научные командировки
-   & $ \text{Н}_{\text{к}} = \num{\businessTripNormative\%} $
+   & $ \text{Н}_{\text{к}} = \num{\businessTripNormative} $
    & $  \text{Р}_{\text{к}} = { \text{З}_{\text{о}} \cdot \text{Н}_{\text{к}} } / \num{100} $
    & \num{\businessTripCost} \\
    \hline
    Прочие прямые расходы
-   & $ \text{Н}_{\text{пз}} = \num{\otherCostNormative\%} $
+   & $ \text{Н}_{\text{пз}} = \num{\otherCostNormative} $
    & $  \text{П}_{\text{з}} = { \text{З}_{\text{о}} \cdot \text{Н}_{\text{пз}} } / \num{100} $
    & \num{\otherCost} \\
    \hline
    Накладные расходы
-   & $ \text{Н}_{\text{рн}} = \num{\overheadCostNormative\%} $
+   & $ \text{Н}_{\text{рн}} = \num{\overheadCostNormative} $
    & $  \text{Р}_{\text{н}} = { \text{З}_{\text{о}} \cdot \text{Н}_{\text{рн}} } / \num{100} $
    & \num{\overheadCost}\\
    \hline
@@ -531,7 +529,7 @@
    & \num{\overallCost}\\
    \hline
    Сопровождение и адаптация ПО
-   & $ \text{Н}_{\text{рса}} = \num{\supportNormative\%} $
+   & $ \text{Н}_{\text{рса}} = \num{\supportNormative} $
    & $  \text{Р}_{\text{са}} = {\text{С}_{\text{р}} \cdot \text{Н}_{\text{рса}} } / { \num{100} } $
    & \num{\softwareSupportCost} \\
    \hline
@@ -541,9 +539,18 @@
    & \num{\baseCost} \\
    \hline
    Прогнозируемая прибыль
-   & $ \text{У}_{\text{рп}} = \num{\profitability\%} $
+
+   & $ \text{У}_{\text{рп}} = \num{\profitability} $
    & $  \text{П}_{\text{с}} = { \text{С}_{\text{п}} \cdot \text{У}_{\text{рп}} } / \num{100} $
    & \num{\income} \\
+
+   %-----------------------------------------
+
+  \caption*{Продолжение таблицы~\ref{table:econ:calculation_cost_and_price}} 
+  \hline
+    {\begin{center}
+       Наименование статей 
+    \end{center} } & \mbox{Норматив,} \% & Методика расчета & \mbox{Значение,} руб. \\
    \hline 
    Прогнозируемая цена без налогов
    & 
@@ -551,12 +558,12 @@
    & \num{\estimatedPrice} \\
    \hline
    Отчисления и налоги в местный и республиканский бюджеты
-   & $ \text{Н}_{\text{мр}} = \num{\localRepubTaxNormative\%} $
+   & $ \text{Н}_{\text{мр}} = \num{\localRepubTaxNormative} $
    & $ \text{О}_{\text{мр}} = { \text{Ц}_{\text{п}} \cdot \text{Н}_{\text{мр}} } / { \num{100} - \text{Н}_{\text{мр}} } $
    & \num{\localRepubTax} \\
    \hline
    Налог на добавленную стоимость
-   & $ \text{Н}_{\text{дс}} = \num{\ndsNormative\%} $
+   & $ \text{Н}_{\text{дс}} = \num{\ndsNormative} $
    & $ \text{НДС}_{\text{}} = { (\text{Ц}_{\text{п}} + \text{О}_{\text{мр}}) \cdot \text{Н}_{\text{дс}} } / \num{100} $
    & \num{\nds} \\
    \hline
@@ -564,9 +571,8 @@
    & 
    & $ \text{Ц}_{\text{о}} = \text{Ц}_{\text{п}} + \text{О}_{\text{мр}} + \text{НДС} $
    & \num{\sellingPrice} \\
-   \hline
-  \end{tabular}
-\end{table}
+   \hline  
+\end{longtable}
 
 \subsection{Расчёт экономической эффективности у разработчика}
 
