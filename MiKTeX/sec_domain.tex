@@ -163,16 +163,144 @@ FPM постепенно замещается памятью EDO (Extended Data 
 Сложность теста составляет 4n. Тест обнаруживает не все неисправности Afs. SAFs обнаруживаются при условии исправного дешифратора адресов. Не все TFs и CFs обнаруживаются. В данном алгоритме важно построить шахматную доску на физической сетке элементов, а не на логическом уровне.
 
 \subsubsection{Тестирующий алгоритм GALPAT}~\\
-\label{page:domain:tests:checkboard}
+\label{page:domain:tests:galpat}
 
 Алгоритм GALPAT (Galloping Pattern) состоит в заполнении памяти 0 (1), кроме базовой ячейки (base-cell), которая содержит 1 (0). На протяжении теста базовая ячейка перемещается по всей матрице. Тест проиллюстрирован на рисунке~\ref{fig:domain:tests:galpat}.
 
 \begin{figure}[ht]
 \centering
-  \includegraphics[scale=0.5]{a_test_galpat.png}  
+  \includegraphics[scale=0.75]{a_test_galpat.png}  
   \caption{ Тестирующий алгоритм GALPAT. }
   \label{fig:domain:tests:galpat}
 \end{figure}
+
+Сложность алгоритма составляет $ 4n^{2} $. Покрывающая способность теста достаточно высокая, все неисправности типа Afs, TFs, CFs и SAFs обнаруживаются и локализуются. Псевдокод теста приведён в листинге~\ref{lst:domain:tests:galpat}.
+
+\begin{lstlisting}[style=fsharpstyle, mathescape,escapeinside={/*@}{@*/},caption={Псевдокод реализации алгоритма GALPAT}, label=lst:domain:tests:galpat]
+function GALPAT =
+ Write background 0;
+ for i in 0 .. 1 do
+  for BC in 0 .. N-1 do
+   Complement BC;
+   for OC in 0 .. N-1 and OC != BC do
+    Read BC;
+    Read OC
+   end for
+   Complement BC;
+   Write background 1;
+ end for
+end
+\end{lstlisting}
+
+\subsubsection{Тестирующий алгоритм WALPAT}~\\
+\label{page:domain:tests:walpat}
+
+Алгоритм WALPAT (Walking Pattern) очень похож на тест GALPAT. Различие лишь в том, что базовая ячейка считывается после того, как все остальные ячейки были просканированы. Сложность составляет $ 2n^{2} $. Тест проиллюстрирован на рисунке~\ref{fig:domain:tests:walpat}.
+
+\begin{figure}[ht]
+\centering
+  \includegraphics[scale=0.75]{a_test_walpat.png}  
+  \caption{ Тестирующий алгоритм WALPAT. }
+  \label{fig:domain:tests:walpat}
+\end{figure}
+
+Покрывающая способность данного теста, как и алгоритма Galloping Pattern, достаточно высокая, все неисправности типа Afs, TFs, CFs и SAFs обнаруживаются и локализуются. Псевдокод теста приведён в листинге~\ref{lst:domain:tests:walpat}.
+
+\begin{lstlisting}[style=fsharpstyle, mathescape,escapeinside={/*@}{@*/},caption={Псевдокод реализации алгоритма WALPAT}, label=lst:domain:tests:walpat]
+function WALPAT =
+ Write background 0;
+ for i in 0 .. 1 do
+  for BC in 0 .. N-1 do
+   Complement BC;
+   for OC in 0 .. N-1 and OC != BC do
+    Read OC
+   end for
+   Read BC;
+   Complement BC;
+   Write background 1;
+ end for
+end
+\end{lstlisting}
+
+\subsubsection{Тестирующий алгоритм Sliding}~\\
+\label{page:domain:tests:sliding}
+
+Тест основывается на алгоритме GALPAT, но вместо сдвига 1 по матрице ячеек, сдвигается целая диагональ(колонка, ряд) единиц. После каждого сдвига сканируется вся память. Визуально тест представлен на рисунке~\ref{fig:domain:tests:sliding}.
+
+\begin{figure}[ht]
+\centering
+  \includegraphics[scale=0.75]{a_test_sliding.png}  
+  \caption{ Тестирующий алгоритм Sliding. }
+  \label{fig:domain:tests:sliding}
+\end{figure} 
+
+Сложность алгоритма составляет $ 4n^{1.5} $. Покрывающая способность теста также довольно высокая, обнаруживаются все неисправности, за исключением некоторых неисправностей типа CFs.
+
+\subsubsection{Тестирующий алгоритм Butterfly}~\\
+\label{page:domain:tests:butterfly}
+
+На протяжении теста базовая ячейка сдвигается по матрице памяти. При каждом сдвиге в цикле проверяются её ближайшие соседи в радиусе не более половины от длины строки и столбца матрицы ячеек. Тест представлен на рисунке~\ref{fig:domain:tests:butterfly}. 
+
+\begin{figure}[ht]
+\centering
+  \includegraphics[scale=0.75]{a_test_butterfly.png}  
+  \caption{ Тестирующий алгоритм Butterfly. }
+  \label{fig:domain:tests:butterfly}
+\end{figure} 
+
+Сложность алгоритма составляет $ 5n \log n $. Тест обнаруживает все неисправности типа SAFs и некоторые из AFs. Псевдокод теста приведён в листинге~\ref{lst:domain:tests:butterfly}.
+
+\begin{lstlisting}[style=fsharpstyle, mathescape,escapeinside={/*@}{@*/},caption={Псевдокод реализации алгоритма Butterfly}, label=lst:domain:tests:butterfly]
+function Butterfly =
+ Write background 0;
+ For i in 0 .. 1 do
+  For BC in 0 .. N-1 do
+   Complement BC;
+   dist = 1; 
+   While dist <= mdist do// mdist < 0.5 col/row length
+    Read cell dist north from BC;
+    Read cell dist east from BC;
+    Read cell dist south from BC;
+    Read cell dist west from BC;
+    Read BC; 
+    dist *=2;
+   end while
+   Complement BC
+  end for
+  Write background 1
+ end for
+end
+\end{lstlisting}
+
+\subsubsection{Тестирующий алгоритм Surround Disturb}~\\
+\label{page:domain:tests:sd}
+
+Алгоритм SD (Surround Disturb) Позволяет проверить поведение ячеек в строке, когда комплиментарные значения записываются в ячейки, расположенные на соседних рядах матрицы. Этот алгоритм разработан на предположении, что ячейки памяти наиболее чувствительны к помехам от своих ближайших соседей. Тест представлен на рисунке~\ref{fig:domain:tests:sd}. 
+
+\begin{figure}[ht]
+\centering
+  \includegraphics[scale=0.75]{a_test_sd.png}  
+  \caption{ Тестирующий алгоритм Surround Disturb. }
+  \label{fig:domain:tests:sd}
+\end{figure} 
+
+Псевдокод алгоритма представлен в листинге~\ref{lst:domain:tests:sd}.
+
+\begin{lstlisting}[style=fsharpstyle, mathescape,escapeinside={/*@}{@*/},caption={Псевдокод реализации алгоритма Surround Disturb}, label=lst:domain:tests:sd]
+For each cell [p,q] // row = p, col = q
+{
+ write 0 in cell[p,q-1];
+ write 0 in cell[p,q];
+ write 0 in cell [p, q+1];
+ write 1 in cell[p-1,q];
+ read 0 from cell[p,q+1];
+ write 1 in cell[p+1,q];
+ read 0 from cell[p, q-1];
+ read 0 from cell[p,q];
+}
+\end{lstlisting}
+
+
 
 
 
