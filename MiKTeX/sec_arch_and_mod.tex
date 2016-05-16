@@ -1,12 +1,10 @@
 \section{Архитектура и модули системы} % (fold)
 \label{sec:arch_and_mod}
 
-% % Библиотека предназначена для представления модификации классических байесовых сетей, упомянутой на странице~\pageref{page:domain:bayes_mod} в подразделе~\ref{sub:domain:bayes_net}.
-
 \subsection{Основные компоненты симулятора}
 \label{sub:arch_and_mod:modules}
 
-Для симуляции динамической оперативной памяти был выбран симулятор DRAMSim2, описанный на странице~\pageref{page:domain:simulators:dramsim2} в подразделе~\ref{page:domain:simulators:dramsim2}. Данный симулятор обладает рядом преимуществ: простота, независимость от сторонних библиотек, хорошо организованная внутренняя архитектура программы. 
+Для симуляции динамической оперативной памяти был выбран симулятор DRAMSim2. Данный симулятор обладает рядом преимуществ: простота, независимость от сторонних библиотек, хорошо организованная внутренняя архитектура программы. 
 
 Симулятор является потактовым, вследствие чего все основные классы унаследованы от единого базового класса SimulatorObject. В листинге~\ref{lst:arch_and_mod:modules:simulator_object} представлена его структура. Объект этого класса имеет единственное поле - счетчик currentClockCycle, который инкрементируется методом step. Таким образом все компоненты симулятора работают в единой временной плоскости. Метод update каждый производный класс имплементирует по-своему, вкладывая нужную ему функциональность.  
 
@@ -63,6 +61,15 @@ void Bank::writeBit(int row, int col, int bit, bool set)
 }
 \end{lstlisting}
 
+В целом работа всей системы представляет собой следующее: контроллер памяти накапливает в очереди транзакций запросы от драйвера; на каждом новом цикле работы системы контроллер памяти извлекает одну транзакцию из очереди, транслирует её адрес в значения номера ранка, банка, ряда и колонки ячейки памяти, преобразует пакет транзакции в команду для устройства памяти и помещает этот пакет в очередь команд; из очереди команд по одному пакету в цикл извлекается команда и контроллер памяти определяет, какое действие нужно совершить устройству памяти. Решение  зависит от множества факторов: состояния банков (например, команда чтения не может быть выполнена, если адресуемая ячейка не активна, в этом случае нужна предварительная команда Activate); контроллер регенерации, который может приостановить все транзакции в системе и запустить процесс обновления памяти. Каждую команду записи в память отслеживает адаптивный сигнатурный анализатор, о котором будет рассказано в следующих подразделах. Контроллер регенерации с помощью сигнатурного анализатора выясняет, были ли неполадки в памяти за время её работы, и при необходимости запускает тесты. Внутри самого ОЗУ находится контроллер неисправностей, который имитирует поведение ячеек с физическими неисправностями, а также контролирует процесс разрядки ячеек при длительном отсутствии команды Refresh. ОЗУ в свою очередь в ответ на команды чтения возвращает контроллеру памяти считанные данные, которые сохраняются в очереди пакетов чтения и затем отправляются драйверу. Основные модули системы представлены на рисунке~\ref{fig:arch_and_mod:modules:main_modules}.
+
+\begin{figure}[ht]
+\centering
+  \includegraphics[scale=0.55]{a_main_modules.png}  
+  \caption{ Основные компоненты симулятора ОЗУ. }
+  \label{fig:arch_and_mod:modules:main_modules}
+\end{figure}
+
 \subsection{Симуляция процесса деградации памяти}
 \label{sub:arch_and_mod:memory_discharge}
 
@@ -79,13 +86,13 @@ void Bank::writeBit(int row, int col, int bit, bool set)
            {b-a+1}, a \le i \ge b
 \end{equation}
 
-Плотность распределения показана на рисунке~\ref{fig:domain:tests:uniform_distribution}.
+Плотность распределения показана на рисунке~\ref{fig:arch_and_mod:modules:uniform_distribution}.
 
 \begin{figure}[ht]
 \centering
   \includegraphics[scale=1]{a_uniform_distribution.png}  
   \caption{ Плотность распределения дискретного равномерного распределения. }
-  \label{fig:domain:tests:uniform_distribution}
+  \label{fig:arch_and_mod:modules:uniform_distribution}
 \end{figure}
 
 В зависимости от того, сколько циклов прошло с момента, когда должен был начаться процесс обновления памяти, количество генерируемых адресов, а следовательно количество бит, обращающихся в 0, возрастает по формуле:
@@ -308,4 +315,133 @@ void MarchTestController::RunElement(int element, int address, uint16_t &buffer)
     }
 }
 \end{lstlisting} 
+
+\subsection{Моделирование функциональных неисправностей ОЗУ}
+\label{sub:arch_and_mod:faults}
+
+Для моделирования функциональных неисправностей ОЗУ используется обобщенная структура Fault, представленная в листинге~\ref{lst:arch_and_mod:faults:faults_struct}. 
+\begin{lstlisting}[style=cplusplusstyle, caption={Структура описания функциональной неисправности ОЗУ}, label=lst:arch_and_mod:faults:faults_struct]
+struct Fault
+{
+    FaultType type;
+    uint16_t victimVal;
+    uint16_t agressorVal;
+    int agressorAddr;
+};
+\end{lstlisting} 
+
+Поле type может принимать одно из следующих значений: SAF,TF, CFin, CFid, CFst. Они объединены в перечислении FaultType. Поле victimVal для разных моделей неисправностей имеет различное значение, но обобщенно оно хранит значение ячейки-жертвы. Так для неисправностей типа SAF victimVal будет содержать значение ячейки памяти, которое эта ячейка хранит постоянно и изменить его не может. Для неисправности TF это поле хранит значение, перейдя в которое ячейка превращается в константную, т.е. не может поменять своё состояние. Для неисправностей CFid и CFst данное поле хранит значение, в которое зависимая ячейка принудительно переходит (для CFid) или в которое она может перейти только при определённом значении в ячейке-агрессоре (для CFst). Для неисправностей типа CFin данное поле не неиспользуется. 
+
+Поле agressorAddr хранит адрес ячейки-агрессора. Это поле используется в неисправностях типа CF, как и поле agressorVal. Поле agressorVal хранит значение ячейки-агрессора, при котором зависимая ячейка может перейти в состояние victimVal (для CFst) или значение, при переходе в которое, ячейка-жертва насильно меняет своё значение на victimVal (для CFin и CFid). 
+
+Класс, контролирующий поведение ячеек в соответствии с различными моделями неисправностей, называется FaultController и находится в классе DRAMDevice. При каждой операции записи в память FaultController вмешивается в работу системы и имитирует поведение неисправностей. Все основные виды неисправностей выявляются на протяжении работы симулятора, однако при неисправностях типа SAF необходимо инициализировать значения ячеек памяти на старте симулятора. 
+
+Метод, анализирующий операцию записи в ячейку памяти и принимающий решение о выполнении тех или иных действий, соответствующих моделям неисправностей, представлен в листинге~\ref{lst:arch_and_mod:faults:faults_run}.
+
+\begin{lstlisting}[style=cplusplusstyle, caption={Реализаия поведения ячеек при функциональных неисправностях}, label=lst:arch_and_mod:faults:faults_run]
+void FaultController::DoFaults(int r, int b, int row, int col, uint16_t data)
+{
+  uint16_t oldData = dramDevice->read(r, b, row, col);
+  uint16_t bitMask = oldData ^ data;
+  
+  for (unsigned i = 0; i < DEVICE_WIDTH; i++)
+  {
+    if (bitMask & (1 << i))
+    {
+      int addr = translator.TranslateToAddr(r, b, row, col, i);
+      DoOperationOnBit(addr, data & (1 << i), oldData & (1 << i));
+    }
+  }
+}
+
+void FaultController::DoOperationOnBit(int addr, uint16_t newVal, uint16_t oldVal)
+{
+  int r = 0, b = 0, row = 0, col = 0, bit = 0;
+  translator.Translate(addr, r, b, row, col, bit);
+  
+  if (IsFaulty(addr))
+  {
+    auto fault = faultyCells[addr];
+    switch (fault.type)
+    {
+    case SAF: break;//set on init   
+    case TF:
+    {
+           if (oldVal != fault.victimVal)
+           {
+             (*dramDevice->ranks)[r].banks[b].writeBit(row, col, bit, newVal == 1);
+           }
+           break;
+    }
+    case CFin:
+    {
+           (*dramDevice->ranks)[r].banks[b].writeBit(row, col, bit, newVal == 1);
+             break;
+    }     
+    case CFid:
+    {
+           (*dramDevice->ranks)[r].banks[b].writeBit(row, col, bit, newVal == 1); 
+           break;
+    }
+    case CFst:
+    {
+           if (newVal != fault.victimVal)
+             (*dramDevice->ranks)[r].banks[b].writeBit(row, col, bit, newVal == 1);
+           else
+           {
+             int r_ = 0, b_ = 0, row_ = 0, col_ = 0, bit_ = 0;
+             translator.Translate(fault.agressorAddr, r_, b_, row_, col_, bit_);
+             uint16_t aggressorData = (*dramDevice->ranks)[r_].banks[b_].read(row_, col_);
+             if ((aggressorData & (1 << bit_)) == fault.agressorVal)
+               (*dramDevice->ranks)[r].banks[b].writeBit(row, col, bit, newVal == 1);
+           }
+           break;
+    }
+    default: break;
+    }
+  }
+  else
+  {
+    if (IsAgressor(addr))
+    {
+      Fault fault;
+      int victim = 0;
+      GetAgressorAttributes(addr, victim, fault);
+      switch (fault.type)
+      {
+      case CFin:
+      {
+             if (newVal == fault.agressorVal && newVal != oldVal)
+             {
+               int r_=0, b_=0, row_=0, col_=0, bit_=0;
+               translator.Translate(victim, r_, b_, row_, col_, bit_);
+               (*dramDevice->ranks)[r_].banks[b_].invertBit(row_, col_, bit_);
+             }
+             break;
+      }
+      case CFid:
+      {
+             if (newVal == fault.agressorVal && newVal != oldVal)
+             {
+               int r_ = 0, b_ = 0, row_ = 0, col_ = 0, bit_ = 0;
+               translator.Translate(victim, r_, b_, row_, col_, bit_);
+               (*dramDevice->ranks)[r_].banks[b_].writeBit(row_, col_, bit_, fault.agressorVal == 1);
+             }
+             break;
+      }
+      default :
+        break;
+      }
+      (*dramDevice->ranks)[r].banks[b].writeBit(row, col, bit, newVal == 1);
+    }
+    else
+    {
+      (*dramDevice->ranks)[r].banks[b].writeBit(row, col, bit, newVal == 1);
+    }
+  } 
+}
+\end{lstlisting} 
+
+
+
 
