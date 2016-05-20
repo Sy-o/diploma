@@ -502,7 +502,7 @@ FUNCTION {bbl.ppages}%    { "\bblPp." }
 
 FUNCTION {bbl.ppage}  %   { "\bblP." }
 {  curlanguage "english" =
-    {"P."}
+    {"p."}
     { curlanguage "ukrainian" = curlanguage "russian" = or
            {"{с.}"}
            {"language is not defined: " language  "P." * * warning$ "P."}
