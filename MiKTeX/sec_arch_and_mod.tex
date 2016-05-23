@@ -138,8 +138,6 @@ void Bank::writeBit(int row, int col, int bit, bool set)
     & $ M[a]^{old} $ & старое значение ячейки.
 \end{explanation}
 
-У рассмотренного сигнатурного анализатора имеется достаточно полезное свойство. Сумма по модулю два всех адресов ячеек, содержащих 1, равна сумме по модулю два всех адресов ячеек, содержащих 0. Это свойство широко применяется в неразрушающих маршевых тестах для анализа содержимого ОЗУ. 
-
 Для слово-ориентированного ОЗУ применяется та же схема сжатия данных, но потребуются некоторые дополнительные действия. Пусть имеется память с матрицей ячеек 16 на 16. Т.е. 16 рядов и 16 колонок. Каждая ячейка имеет объём 8 бит. Применяя метод АСА (адаптивный сигнатурный анализатор), теперь нужно оперировать адресами не ячеек, а бит памяти. Таким образом для 5-го бита в ячейке, расположенной на 4-ом ряду и 2-ой колонке адрес будет представлен числом  0x215 в шестнадцатиричной системе счисления, или числом 0100 0010 101 в двоичной. Построение адреса бита пояснено на рисунке ~\ref{fig:arch_and_mod:memory_refresh:address}.
 
 \begin{figure}[ht]
@@ -149,14 +147,17 @@ void Bank::writeBit(int row, int col, int bit, bool set)
   \label{fig:arch_and_mod:memory_refresh:address}
 \end{figure}
 
+У метода АСА есть недостаток, который заключается в том, что 0-вой адрес ячейки никак не повлияет на общую сумму адресов, т.к. $0 \oplus S = S$. Исходя из этого вместе с данным методом используется также бит четности\cite{March_Tests_Ivaniuk}. Бит четности - это дополнительный бит в младшем разряде адреса ячейки, который всегда содержит 1-цу. Таким образом даже нулевой адрес ячейки повлияет на общую сумму адресов. Но главная особенность бита четности заключается в том, что с его помощью можно определить, какой кратности произошла ошибка. Если тестовая и эталонная сигнатуры не совпали и бит четности равен нулю, тогда произошло четное количество ошибок, в противном случае нечетное.
+
 После каждой операции записи в память, эталонная сигнатура обновляется. При наступлении периода регенерации, высчитывается тестовая сигнатура $S_{test}$ и затем сравнивается с эталонной $S_{ref}$. Если сигнатуры совпали - значит с памятью всё в порядке, в противном случае произошли ошибки. При однократной ошибке достаточно просто найти ядрес ячейки и позицию бита, в котором произошла ошибка. Сложение двух сигнатур  $S_{test} \oplus S_{ref}$ дает адрес бита с изменившимися данными. Таким образом процедура регенерации памяти состоит из следующих шагов:
 \begin{enumerate}
   \item При наступлении периода обновления памяти вычисляется тестовая сигнатура и сравнивается с эталонной;
-  \item Если сигнатуры не совпали, то предполагаем, что произошла однократная ошибка. Инвертируется бит по адресу $S_{test} \oplus S_{ref}$;
-  \item Повторяется шаг а;
+  \item Если сигнатуры не совпали и бит четности равен 1-це, то предполагаем, что произошла однократная ошибка. Инвертируется бит по адресу $S_{test} \oplus S_{ref}$.;
+  \item Если сигнатуры не совпали и бит четности равен 0-лю, то произошло четное количество ошибок. Переход к шагу д
   \item Если сигнатуры совпали, то была однократная ошибка, которую удалось устранить. В противном случае переход к шагу д;
   \item Запуск неразрушающего маршевого теста для выявления неисправностей;
-  \item Если тест ничего не обнаружил, значит была многократная ошибка, в противном случае неисправность, которую нужно диагностировать.
+  \item Если тест ничего не обнаружил, значит была многократная ошибка, в противном случае неисправность, которую нужно диагностировать;
+  \item Повторяется шаг а.
 \end{enumerate}
 
 Блок-схема алгоритма регенерации памяти представлена на рисунке ~\ref{fig:arch_and_mod:memory_refresh:refresh_chart}.
@@ -175,12 +176,11 @@ void SAODCController::UpdateRef(BusPacket* packet)
 {
     if (packet->busPacketType == DATA)
     {
-        uint16_t oldData = dramDevice->read(packet->rank, packet->bank,
-                                            packet->row, packet->column);
+        uint16_t oldData = dramDevice->read(packet->address);
         uint16_t newData = packet->data->getData();
         if (oldData != newData)
         {
-            int address = GetAddress(rank, bank, row, col, data);
+            int address = GetAddress(packet->address, data);
             RefSignature ^= address;       
         }
     }
@@ -188,9 +188,11 @@ void SAODCController::UpdateRef(BusPacket* packet)
 
 int SAODCController::GetAddress(int rank, int bank, int row, int col, uint16_t data)
 {
-    //get sum of changed bits
+    //get 'bit address sum'
+    if (!data) return 0;
+    
     int bitSum = 0;
-    int bitCount  = 0; // count of bit, that stores '1'
+    int bitCount  = 0; // '1' bit count
     for (int i = 0; (unsigned)i < DEVICE_WIDTH; i++)
     {
         if (data & (1 << i))
@@ -198,19 +200,24 @@ int SAODCController::GetAddress(int rank, int bank, int row, int col, uint16_t d
             bitSum ^= i;
             bitCount++;
         }
-    }    
-    if (bitCount % 2 == 0)
-    {
-        rank = bank = row = col = 0;
     }
-    return translator.TranslateToAddr(rank, bank, row, col, bitSum);
+    if (bitCount % 2 == 0)
+    addr.Clear();
+    
+    addr.bit = bitSum;
+    int address = addr.GetPhysical();
+
+    if (bitCount % 2 != 0)
+        AddParityBit(address);
+  
+    return address;
 }
 \end{lstlisting} 
 
 \subsection{Представление маршевых тестов}
 \label{sub:arch_and_mod:march_tests}
 
-Для выявления неисправностей ОЗУ решено использовать маршевые тесты из-за их простоты и эффективности. Все маршевые тесты построены по единому принципу и различаются лишь набором элементов. Поэтому целесообразно представить такие тесты с помощью обобщенной структуры, которая может подстроиться под любой тест. Направление перебора адресов отражается элементами MD\_UP, MD\_DOWN и MD\_BOTH перечисления MarchDirection. Операции чтения и записи так же представлены элементами перечисления MarchOperation. Элементы MO\_RD и MO\_RDC обозначают операцию чтения прямого и обратного значения в буфер из ячейки памяти, элементы MO\_WD и MO\_WDC описывают операции записи прямого и обратного значения из буфера в ячейку памяти. Фаза маршевого теста отражена в структуре MarchPhase, представленной в листинге ~\ref{lst:arch_and_mod:march_tests:march_phase}.
+Для выявления неисправностей ОЗУ решено использовать маршевые тесты из-за их простоты и эффективности. Все маршевые тесты построены по единому принципу и различаются лишь набором элементов. Поэтому целесообразно представить такие тесты с помощью обобщенной структуры, которая может подстроиться под любой тест. Направление перебора адресов отражается элементами MD\_UP, MD\_DOWN и MD\_BOTH перечисления MarchDirection. Операции чтения и записи также представлены элементами перечисления MarchOperation. Элементы MO\_RD и MO\_RDC обозначают операцию чтения прямого и обратного значения в буфер из ячейки памяти, элементы MO\_WD и MO\_WDC описывают операции записи прямого и обратного значения из буфера в ячейку памяти. Фаза маршевого теста отражена в структуре MarchPhase, представленной в листинге ~\ref{lst:arch_and_mod:march_tests:march_phase}.
 
 \begin{lstlisting}[style=cplusplusstyle, caption={Структура фазы маршевого теста}, label=lst:arch_and_mod:march_tests:march_phase]
 struct MarchPhase
@@ -220,9 +227,9 @@ struct MarchPhase
 };
 \end{lstlisting} 
 
-Таким образом маршевый тест представляется вектором, содержащим определённое количество структур MarchPhase. Инициализация вектора элементов маршевого теста March C представлена в листинге ~\ref{lst:arch_and_mod:march_tests:march_init}.
+Таким образом маршевый тест представляется вектором, содержащим определённое количество структур MarchPhase. Инициализация вектора элементов маршевого теста March C- представлена в листинге ~\ref{lst:arch_and_mod:march_tests:march_init}.
 
-\begin{lstlisting}[style=cplusplusstyle, caption={Инициализация вектора элементов маршевого теста March C}, label=lst:arch_and_mod:march_tests:march_init]
+\begin{lstlisting}[style=cplusplusstyle, caption={Инициализация вектора элементов маршевого теста March C-}, label=lst:arch_and_mod:march_tests:march_init]
 void InitializeTest()
 {
     std::vector<MarchPhase> phases;
@@ -234,7 +241,7 @@ void InitializeTest()
 };
 \end{lstlisting} 
 
-Другие виды маршевых тестов инициализируются подобным образом.
+Другие виды маршевых тестов инициализируются подобным образом. Программа поддерживает следующие маршевые тесты: March C-, March A, March B, March X, March Y, MATS, MATS+, MATS++.
 
 Логика создания и выполнения маршевых тестов находится в классе MarchTestController. Запуск теста производит класс RegenerationController. Для сжатия данных используется адаптивный сигнатурный анализатор, рассмотренный в предыдущем пункте. На этапе инициализации теста в качестве эталонной сигнатуры берётся уже вычисленная ранее рабочая сигнатура класса RegenerationController. Далее на каждой фазе маршевого теста вычисляется тестовая сигнатура и в конце фазы сравнивается с эталонной. При правильном функционировании памяти сигнатуры должны всегда совпадать вне зависимости от операций, производимых элементами маршевого теста. Это происходит потому, что маршевый тест является неразрушающим, а также благодаря свойству АСА, которое заключается в равенстве сумм адресов ячеек, содержащих 1, и адресов ячеек, содержащих 0. Выполнение маршевого теста занимает определённое время, а потому выполнение отдельных его фаз разбито на несколько циклов работы симулятора. Выполнение теста приводится в листинге ~\ref{lst:arch_and_mod:march_tests:march_run}.
 
@@ -263,9 +270,10 @@ void MarchTestController::Update()
     for (int addr = addrStart; addr >= bottom && addr <= top; addr += counter)
     {
         uint16_t buffer = 0;
+        uint16_t old = 0;
         for (auto& el : phase.elements)
         {
-            RunElement(el, addr, buffer);
+            RunElement(el, addr, buffer, old);
         }
     }
     int err = saodc.Compare();
@@ -286,7 +294,7 @@ void MarchTestController::Update()
 Выполнение каждой отдельной операции маршевого элемента приведено в листинге ~\ref{lst:arch_and_mod:march_tests:march_element_run}.
 
 \begin{lstlisting}[style=cplusplusstyle, caption={Выполнение элемента маршевого теста}, label=lst:arch_and_mod:march_tests:march_element_run]
-void MarchTestController::RunElement(int element, int address, uint16_t &buffer)
+void MarchTestController::RunElement(int element, int address, uint16_t &buffer, uint16_t& oldValue)
 {
     int r = 0, b = 0, row = 0, col = 0;
     addrTranslator.Translate(address, r, b, row, col);
@@ -311,7 +319,8 @@ void MarchTestController::RunElement(int element, int address, uint16_t &buffer)
     //convertData
     if (element == MO_RD || element == MO_RDC)
     {
-        saodc.UpdateTestSig(r, b, row, col, data);
+        saodc.UpdateTestSig(addr, data ^ oldValue);
+        oldValue = data;
     }
 }
 \end{lstlisting} 
@@ -330,117 +339,273 @@ struct Fault
 };
 \end{lstlisting} 
 
-Поле type может принимать одно из следующих значений: SAF,TF, CFin, CFid, CFst. Они объединены в перечислении FaultType. Поле victimVal для разных моделей неисправностей имеет различное значение, но обобщенно оно хранит значение ячейки-жертвы. Так для неисправностей типа SAF victimVal будет содержать значение ячейки памяти, которое эта ячейка хранит постоянно и изменить его не может. Для неисправности TF это поле хранит значение, перейдя в которое ячейка превращается в константную, т.е. не может поменять своё состояние. Для неисправностей CFid и CFst данное поле хранит значение, в которое зависимая ячейка принудительно переходит (для CFid) или в которое она может перейти только при определённом значении в ячейке-агрессоре (для CFst). Для неисправностей типа CFin данное поле не неиспользуется. 
+Поле type может принимать одно из следующих значений: SAF,TF, AF, CFin, CFid, CFst. Они объединены в перечислении FaultType. Поле victimVal для разных моделей неисправностей имеет различное значение, но обобщенно оно хранит значение ячейки-жертвы. Так для неисправностей типа SAF victimVal будет содержать значение ячейки памяти, которое эта ячейка хранит постоянно и изменить его не может. Для неисправности TF это поле хранит значение, перейдя в которое ячейка превращается в константную, т.е. не может поменять своё состояние. Для неисправностей CFid и CFst данное поле хранит значение, в которое зависимая ячейка принудительно переходит (для CFid) или в которое она может перейти только при определённом значении в ячейке-агрессоре (для CFst). Для неисправностей типа CFin и AF данное поле не неиспользуется. 
 
-Поле agressorAddr хранит адрес ячейки-агрессора. Это поле используется в неисправностях типа CF, как и поле agressorVal. Поле agressorVal хранит значение ячейки-агрессора, при котором зависимая ячейка может перейти в состояние victimVal (для CFst) или значение, при переходе в которое, ячейка-жертва насильно меняет своё значение на victimVal (для CFin и CFid). 
+Поле agressorAddr хранит адрес ячейки-агрессора. Это поле используется в неисправностях типа CF и AF. Поле agressorVal используется только для CF. Поле agressorVal хранит значение ячейки-агрессора, при котором зависимая ячейка может перейти в состояние victimVal (для CFst) или значение, при переходе в которое, ячейка-жертва насильно меняет своё значение на victimVal (для CFin и CFid). Для неисправности типа AF поле agressorAddr хранит адрес ячейки, при записи значения в которую записываемое значение дублируется по адресу ячейки-жертвы.
 
 Класс, контролирующий поведение ячеек в соответствии с различными моделями неисправностей, называется FaultController и находится в классе DRAMDevice. При каждой операции записи в память FaultController вмешивается в работу системы и имитирует поведение неисправностей. Все основные виды неисправностей выявляются на протяжении работы симулятора, однако при неисправностях типа SAF необходимо инициализировать значения ячеек памяти на старте симулятора. 
 
 Метод, анализирующий операцию записи в ячейку памяти и принимающий решение о выполнении тех или иных действий, соответствующих моделям неисправностей, представлен в листинге~\ref{lst:arch_and_mod:faults:faults_run}.
 
-\begin{lstlisting}[style=cplusplusstyle, caption={Реализаия поведения ячеек при функциональных неисправностях}, label=lst:arch_and_mod:faults:faults_run]
-void FaultController::DoFaults(int r, int b, int row, int col, uint16_t data)
+\begin{lstlisting}[style=cplusplusstyle, caption={Реализаия поведения ячеек с функциональными неисправностями}, label=lst:arch_and_mod:faults:faults_run]
+void FaultController::DoFaults(Address addr, uint16_t data)
 {
-  uint16_t oldData = dramDevice->read(r, b, row, col);
-  uint16_t bitMask = oldData ^ data;
+    uint16_t oldData = dramDevice->read(addr);
+    uint16_t bitMask = oldData ^ data;
   
-  for (unsigned i = 0; i < DEVICE_WIDTH; i++)
-  {
-    if (bitMask & (1 << i))
+    for (unsigned i = 0; i < DEVICE_WIDTH; i++)
     {
-      int addr = translator.TranslateToAddr(r, b, row, col, i);
-      DoOperationOnBit(addr, data & (1 << i), oldData & (1 << i));
+        if (bitMask & (1 << i))
+        {
+            addr.bit = i;
+            DoOperationOnBit(addr, data & (1 << i) ? 1 : 0, oldData & (1 << i) ? 1 : 0);
+        }
     }
-  }
 }
 
-void FaultController::DoOperationOnBit(int addr, uint16_t newVal, uint16_t oldVal)
+void FaultController::DoOperationOnBit(Address address, uint16_t newVal, uint16_t oldVal)
 {
-  int r = 0, b = 0, row = 0, col = 0, bit = 0;
-  translator.Translate(addr, r, b, row, col, bit);
-  
-  if (IsFaulty(addr))
-  {
-    auto fault = faultyCells[addr];
-    switch (fault.type)
+    int addr = address.GetPhysical();
+    if (IsFaulty(addr))
     {
-    case SAF: break;//set on init   
-    case TF:
-    {
-           if (oldVal != fault.victimVal)
-           {
-             (*dramDevice->ranks)[r].banks[b].writeBit(row, col, bit, newVal == 1);
-           }
-           break;
-    }
-    case CFin:
-    {
-           (*dramDevice->ranks)[r].banks[b].writeBit(row, col, bit, newVal == 1);
-             break;
-    }     
-    case CFid:
-    {
-           (*dramDevice->ranks)[r].banks[b].writeBit(row, col, bit, newVal == 1); 
-           break;
-    }
-    case CFst:
-    {
-           if (newVal != fault.victimVal)
-             (*dramDevice->ranks)[r].banks[b].writeBit(row, col, bit, newVal == 1);
-           else
-           {
-             int r_ = 0, b_ = 0, row_ = 0, col_ = 0, bit_ = 0;
-             translator.Translate(fault.agressorAddr, r_, b_, row_, col_, bit_);
-             uint16_t aggressorData = (*dramDevice->ranks)[r_].banks[b_].read(row_, col_);
-             if ((aggressorData & (1 << bit_)) == fault.agressorVal)
-               (*dramDevice->ranks)[r].banks[b].writeBit(row, col, bit, newVal == 1);
-           }
-           break;
-    }
-    default: break;
-    }
-  }
-  else
-  {
-    if (IsAgressor(addr))
-    {
-      Fault fault;
-      int victim = 0;
-      GetAgressorAttributes(addr, victim, fault);
-      switch (fault.type)
-      {
-      case CFin:
-      {
-             if (newVal == fault.agressorVal && newVal != oldVal)
-             {
-               int r_=0, b_=0, row_=0, col_=0, bit_=0;
-               translator.Translate(victim, r_, b_, row_, col_, bit_);
-               (*dramDevice->ranks)[r_].banks[b_].invertBit(row_, col_, bit_);
-             }
-             break;
-      }
-      case CFid:
-      {
-             if (newVal == fault.agressorVal && newVal != oldVal)
-             {
-               int r_ = 0, b_ = 0, row_ = 0, col_ = 0, bit_ = 0;
-               translator.Translate(victim, r_, b_, row_, col_, bit_);
-               (*dramDevice->ranks)[r_].banks[b_].writeBit(row_, col_, bit_, fault.agressorVal == 1);
-             }
-             break;
-      }
-      default :
-        break;
-      }
-      (*dramDevice->ranks)[r].banks[b].writeBit(row, col, bit, newVal == 1);
+        Fault fault = GetCellAttributes(addr, false);
+        switch (fault.type)
+        {
+            case SAF: break;
+            case TF:
+            {
+                if (oldVal != fault.victimValue)
+                {
+                    WriteBit(address, newVal);
+                }
+                break;
+            }
+            case CFin:
+            {
+                WriteBit(address, newVal);
+                break;
+            }     
+            case CFid:
+            {
+                WriteBit(address, newVal);
+                break;
+            }
+            case CFst:
+            {
+                if (newVal != fault.victimValue)
+                    WriteBit(address, newVal);
+                else
+                {
+                    Address agrAdr(fault.agressorAddress, true);
+                    if (dramDevice->readBit(agrAdr) == fault.agressorValue)
+                        WriteBit(address, newVal);
+                }
+                break;
+            }
+            default: break;
+        }
     }
     else
     {
-      (*dramDevice->ranks)[r].banks[b].writeBit(row, col, bit, newVal == 1);
-    }
-  } 
+        if (IsAgressor(addr))
+        {
+            Fault fault = GetCellAttributes(addr, true);      
+            switch (fault.type)
+            {
+                case CFin:
+                {
+                    if (newVal == fault.agressorValue && newVal != oldVal)
+                    {
+                        Address vicAdr(fault.victimAddress, true);
+                        (*dramDevice->ranks)[vicAdr.rank].banks[vicAdr.bank].invertBit(vicAdr);
+                    }
+                    break;
+                }
+                case CFid:
+                {
+                    if (newVal == fault.agressorValue && newVal != oldVal)
+                    {
+                        Address vicAdr(fault.victimAddress, true);
+                        WriteBit(vicAdr, fault.victimValue);
+                    }
+                    break;
+                }
+                case AF:
+                {
+                    Address vicAdr(fault.victimAddress, true);
+                    WriteBit(vicAdr, newVal);
+                    break;
+                }
+                default :
+                  break;
+            }
+            WriteBit(address, newVal);
+        }
+        else
+        {
+            WriteBit(address, newVal);
+        }
+    } 
 }
 \end{lstlisting} 
+
+
+\subsection{Верификация неразрушающих маршевых тестов}
+\label{sub:arch_and_mod:verification}
+
+Для верификации были взяты следующие неразрушающие маршевые тесты: March C-, March A, March B, March X, March Y, MATS, MATS+, MATS++. Описание тестов находится в таблице \ref{table:arch_and_mod:verification:march_tests}.
+
+
+\begin{table}[ht]
+  \caption{Неразрушающие маршевые тесты}
+  \label{table:arch_and_mod:verification:march_tests}
+  \begin{tabular}{| >{\centering}m{0.15\textwidth}
+                  | >{\centering}m{0.15\textwidth}
+                  | >{\centering\arraybackslash}m{0.6\textwidth}|}
+   \hline 
+  {Название} & {Сложность} & {Описание теста} \\ \hline
+   March C- & 9N & $\{\Uparrow (rd,wdc); \Uparrow (rdc,wd); \Downarrow (rd,wdc); \Downarrow (rdc,wd); \Updownarrow (rd)\}$ \\ \hline
+   March A & 14N & $\{\Uparrow(rd,wdc,wd,wdc); \Uparrow (rdc,wd,wdc); \Downarrow (rdc,wd,wdc,wd); \Downarrow (rd,wdc,wd)\}$ \\ \hline
+   March B & 16N & $\{\Uparrow(rd,wdc,rdc,wd,rd,wdc); \Uparrow (rdc,wd,wdc); \Downarrow (rdc,wd,wdc,wd); \Downarrow (rd,wdc,wd)\}$ \\ \hline
+   March X & 5N & $\{\Uparrow (rd,wdc); \Downarrow (rdc,wd); \Updownarrow (rd)\}$ \\ \hline
+   March Y & 5N & $\{\Uparrow (rd,wdc,rdc); \Downarrow (rdc,wd,rd); \Updownarrow (rd)\}$ \\ \hline
+   MATS & 3N & $\{\Updownarrow (rd,wdc); \Updownarrow (rdc)\}$ \\ \hline
+   MATS+ & 4N & $\{\Uparrow (rd,wdc); \Downarrow (rdc,wd)\}$ \\ \hline
+   MATS++ & 5N & $\{\Uparrow (rd,wdc); \Downarrow (rdc,wd,rd)\}$ \\ \hline   
+  \end{tabular}
+\end{table}
+
+Для верификации потребовалось запустить каждый тест для каждой модели неисправности, находящейся в памяти. Всего были проверены 26 неисправностей: 2 вида SAF, 2 вида TF, 2 вида AF, 4 вида CFin, 8 видов CFid и 8 видов CFst. В качестве неисправностей AF были взяты только два случая: когда адрес ячейки, чье значение при записи дублируется в ячейку-жерту, меньше, чем адрес ячейки-жертвы, и наоборот. 
+
+Для неисправностей SAF, TF, AF и CFin результаты тестов приведены в таблице \ref{table:arch_and_mod:verification:coverage1}.
+
+\begin{table}[!ht]
+\caption{Покрывающая способность неразрушающих маршевых тестов неисправностей SAF, TF, AF и CFin}
+\label{table:arch_and_mod:verification:coverage1}
+  \centering
+  \begin{tabular}{| >{\centering}m{0.13\textwidth} 
+                  | >{\centering}m{0.02\textwidth} 
+                  | >{\centering}m{0.02\textwidth} 
+                  | >{\centering}m{0.02\textwidth} 
+                  | >{\centering}m{0.02\textwidth} 
+                  | >{\centering}m{0.05\textwidth} 
+                  | >{\centering}m{0.05\textwidth} 
+                  | >{\centering}m{0.1\textwidth} 
+                  | >{\centering}m{0.1\textwidth} 
+                  | >{\centering}m{0.1\textwidth} 
+                  | >{\centering\arraybackslash}m{0.1\textwidth}|}
+    \hline
+    \multirow{3}{0.13\textwidth}{\centering Тест} & \multicolumn{10}{c|}{Модели неисправностей} \\ \cline{2-11}    
+    & \multicolumn{2}{c|}{SAF} & \multicolumn{2}{c|}{TF} & \multicolumn{2}{c|}{AF} & \multicolumn{4}{c|}{CFin} \\ \cline{2-11}
+    & 0 & 1 & $\downarrow$ & $\uparrow$ & $\wedge(b)$ & $\vee(b)$ & $\wedge(\uparrow,b)$ & $\wedge(\downarrow,b)$ & $\vee(\uparrow,b)$ & $\vee(\downarrow,b)$ \\ \hline
+    
+    March C-  & + & + & + & + & + & + & + & + & + & +\\ \hline
+    March A   & + & + & + & + & + & + & + & + & + & +\\ \hline
+    March B   & + & + & + & + & + & + & + & + & + & +\\ \hline
+    March X   & + & + & + & + & + & + & + & + & + & +\\ \hline
+    March Y   & + & + & + & + & + & + & + & + & + & +\\ \hline
+    MATS      & + & + & + & - & + & - & + & - & + & -\\ \hline
+    MATS+     & + & + & + & - & + & + & + & - & + & +\\ \hline
+    MATS++    & - & - & - & + & + & + & + & - & + & +\\ \hline
+  \end{tabular}
+\end{table}
+
+Для неисправностей CFid результаты тестов приведены в таблице \ref{table:arch_and_mod:verification:coverage2}.
+
+\begin{table}[!ht]
+\caption{Покрывающая способность неразрушающих маршевых тестов неисправностей CFid}
+\label{table:arch_and_mod:verification:coverage2}
+  \centering
+  \begin{tabular}{| >{\centering}m{0.12\textwidth} 
+                  | >{\centering}m{0.075\textwidth} 
+                  | >{\centering}m{0.075\textwidth} 
+                  | >{\centering}m{0.075\textwidth} 
+                  | >{\centering}m{0.075\textwidth} 
+                  | >{\centering}m{0.075\textwidth} 
+                  | >{\centering}m{0.075\textwidth} 
+                  | >{\centering}m{0.075\textwidth} 
+                  | >{\centering\arraybackslash}m{0.1\textwidth}|}
+    \hline
+    \multirow{3}{0.12\textwidth}{\centering Тест} & \multicolumn{8}{c|}{Модели неисправностей} \\ \cline{2-9}    
+    & \multicolumn{8}{c|}{CFid} \\ \cline{2-9}
+    & {$\wedge$ \\ $(\uparrow,0)$} & {$\wedge$ \\ $(\uparrow,1)$} & {$\wedge$ \\ $(\downarrow,0)$} & {$\wedge$ \\ $(\downarrow,1)$} 
+    & {$\vee$ \\ $(\uparrow,0)$} & {$\vee$ \\ $(\uparrow,1)$} & {$\vee$ \\ $(\downarrow,0)$} & $\vee(\downarrow,1)$ \\ \hline
+    
+    March C-  & + & + & + & + & + & + & + & + \\ \hline
+    March A   & + & + & + & + & + & + & + & + \\ \hline
+    March B   & + & + & + & + & + & + & + & + \\ \hline
+    March X   & - & + & - & + & + & - & + & - \\ \hline
+    March Y   & - & + & - & + & + & - & + & - \\ \hline
+    MATS      & - & + & - & - & + & - & - & - \\ \hline
+    MATS+     & - & + & - & - & + & - & + & - \\ \hline
+    MATS++    & - & + & - & - & + & - & + & - \\ \hline
+  \end{tabular}
+\end{table}
+
+Для неисправностей CFst результаты тестов приведены в таблице \ref{table:arch_and_mod:verification:coverage3}.
+
+\begin{table}[!ht]
+\caption{Покрывающая способность неразрушающих маршевых тестов неисправностей CFst}
+\label{table:arch_and_mod:verification:coverage3}
+  \centering
+  \begin{tabular}{| >{\centering}m{0.12\textwidth} 
+                  | >{\centering}m{0.075\textwidth} 
+                  | >{\centering}m{0.075\textwidth} 
+                  | >{\centering}m{0.075\textwidth} 
+                  | >{\centering}m{0.075\textwidth} 
+                  | >{\centering}m{0.075\textwidth} 
+                  | >{\centering}m{0.075\textwidth} 
+                  | >{\centering}m{0.075\textwidth} 
+                  | >{\centering\arraybackslash}m{0.1\textwidth}|}
+    \hline
+    \multirow{3}{0.12\textwidth}{\centering Тест} & \multicolumn{8}{c|}{Модели неисправностей} \\ \cline{2-9}    
+    & \multicolumn{8}{c|}{CFst} \\ \cline{2-9}
+    & {$\wedge$ \\ $(0,0)$} & {$\wedge$ \\ $(0,1)$} & {$\wedge$ \\ $(1,0)$} & {$\wedge$ \\ $(1,1)$} 
+    & {$\vee$ \\ $(0,0)$} & {$\vee$ \\ $(0,1)$} & {$\vee$ \\ $(1,0)$} & $\vee(1,1)$ \\ \hline
+    
+    March C-  & + & + & + & + & + & + & + & + \\ \hline
+    March A   & + & + & - & - & - & + & + & + \\ \hline
+    March B   & + & + & - & - & - & + & + & + \\ \hline
+    March X   & + & + & - & - & - & - & + & + \\ \hline
+    March Y   & + & + & - & - & - & - & + & + \\ \hline
+    MATS      & - & + & - & - & - & - & - & + \\ \hline
+    MATS+     & - & + & - & - & - & - & - & + \\ \hline
+    MATS++    & + & - & - & - & - & - & + & - \\ \hline
+  \end{tabular}
+\end{table}
+
+Обобщенные результаты по всем тестам представлены в таблице\ref{table:arch_and_mod:verification:coverage}.
+
+\begin{table}[!ht]
+\caption{Покрывающая способность неразрушающих маршевых тестов}
+\label{table:arch_and_mod:verification:coverage}
+  \centering
+  \begin{tabular}{| >{\centering}m{0.2\textwidth} 
+                  | >{\centering}m{0.1\textwidth} 
+                  | >{\centering}m{0.1\textwidth} 
+                  | >{\centering}m{0.1\textwidth} 
+                  | >{\centering}m{0.1\textwidth} 
+                  | >{\centering}m{0.1\textwidth} 
+                  | >{\centering\arraybackslash}m{0.1\textwidth}|}
+    \hline
+    \multirow{2}{0.15\textwidth}{\centering Тест} &
+    \multicolumn{6}{c|}{\centering Модели неисправностей} \\
+    \cline{2-7}
+    & SAF & TF & AF & CFin & CFid & CFst \\
+    \hline
+     March C-   & 2/2 & 2/2 & 2/2 & 4/4 & 8/8 & 8/8 \\ \hline
+     March A    & 2/2 & 2/2 & 2/2 & 4/4 & 8/8 & 5/8 \\ \hline
+     March B    & 2/2 & 2/2 & 2/2 & 4/4 & 8/8 & 5/8 \\ \hline
+     March X    & 2/2 & 2/2 & 2/2 & 4/4 & 4/8 & 4/8 \\ \hline
+     March Y    & 2/2 & 2/2 & 2/2 & 4/4 & 4/8 & 4/8 \\ \hline
+     MATS       & 2/2 & 1/2 & 1/2 & 2/4 & 2/8 & 2/8 \\ \hline
+     MATS+      & 2/2 & 1/2 & 2/2 & 3/4 & 3/8 & 2/8 \\ \hline
+     MATS++     & 0/2 & 1/2 & 2/2 & 3/4 & 3/8 & 2/8 \\ \hline
+  \end{tabular}
+\end{table}
+
+Из результатов тестов видно, что наибольшей покрывающей способностью обладает маршевый тест March C-. По сравнению с тестами March A и March B, которые также имеют хорошие показатели обнаружения неисправностей, тест March C- не только охватывает больше неисправностей, но и является оптимальным по скорости по сравнению с предыдущими тестами. 
+
 
 
 
