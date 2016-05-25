@@ -342,7 +342,7 @@
 Подставив приведенные выше коэффициенты для разрабатываемого ПО в формулу~(\ref{eq:econ:effort_common}) получим общую трудоемкость разработки
 \begin{equation}
   \label{eq:econ:effort_common_calc}
-  \text{Т}_\text{о} = \num{\normativeManDays} \times \num{\complexityFactor} \times \num{\stdModuleUsageFactor} \times \num{\originalityFactor} \approx \SI{\adjustedManDays}{\text{чел.}/\text{дн.}}
+  \text{Т}_\text{о} = \num{\normativeManDays} \cdot \num{\complexityFactor} \cdot \num{\stdModuleUsageFactor} \cdot \num{\originalityFactor} \approx \SI{\adjustedManDays}{\text{чел.}/\text{дн.}}
 \end{equation}
 
 На основе общей трудоемкости и требуемых сроков реализации проекта вычисляется плановое количество исполнителей.
@@ -383,7 +383,7 @@
   \label{eq:econ:num_of_programmers_calc}
   \text{Ч}_\text{р} =
     \frac{\num{\adjustedManDays}}
-         {\num{\developmentTimeYears} \times \num{\workingDaysInYear}}
+         {\num{\developmentTimeYears} \cdot \num{\workingDaysInYear}}
     \approx \SI{\requiredNumberOfProgrammers}{\text{рабочих}}.
 \end{equation}
 
@@ -428,11 +428,11 @@
 Подставив данные из таблицы~\ref{table:econ:programmers} в формулу~(\ref{eq:econ:month_salary}), приняв значение тарифной ставки 1-го разряда $ \text{Т}_{\text{м}_{1}} = \SI{\tariffRateFirst}{\text{\byr}} $ и среднемесячную норму рабочего времени $ \text{Ф}_{\text{р}} = \SI{\workingHoursInMonth}{\text{часов}} $ получаем
 \begin{equation}
   \label{eq:econ:month_salary_calc1}
-  \text{Т}_{\text{ч}}^{\text{прогр. \Rmnum{1}-разр.}} = \frac{ \num{\tariffRateFirst} \times \num{\tariffFactorFst} } { \num{\workingHoursInMonth} } = \SI{\salaryPerHourFst}{\text{\byr}/\text{час;}}
+  \text{Т}_{\text{ч}}^{\text{прогр. \Rmnum{1}-разр.}} = \frac{ \num{\tariffRateFirst} \cdot \num{\tariffFactorFst} } { \num{\workingHoursInMonth} } = \SI{\salaryPerHourFst}{\text{\byr}/\text{час;}}
 \end{equation}
 \begin{equation}
   \label{eq:econ:month_salary_calc2}
-  \text{Т}_{\text{ч}}^{\text{вед. прогр.}} = \frac{ \num{\tariffRateFirst} \times \num{\tariffFactorSnd} } { \num{\workingHoursInMonth} } = \SI{\salaryPerHourSnd}{\text{\byr}/\text{час.}}
+  \text{Т}_{\text{ч}}^{\text{вед. прогр.}} = \frac{ \num{\tariffRateFirst} \cdot \num{\tariffFactorSnd} } { \num{\workingHoursInMonth} } = \SI{\salaryPerHourSnd}{\text{\byr}/\text{час.}}
 \end{equation}
 
 Основная заработная плата исполнителей на конкретное ПО рассчитывается по формуле
@@ -455,7 +455,7 @@
 Подставив ранее вычисленные значения и данные из таблицы~\ref{table:econ:programmers} в формулу~(\ref{eq:econ:total_salary}) и приняв коэффициент премирования $ \text{К} = \num{\bonusRate} $ получим
 \begin{equation}
   \label{eq:econ:total_salary_calc}
-  \text{З}_{\text{о}} = (\salaryPerHourFst \times \num{\employmentFst} + \salaryPerHourSnd \times \num{\employmentSnd}) \times \num{\workingHoursInDay} \times \num{\bonusRate} = \SI{\totalSalary}{\text{\byr}} \text{\,.}
+  \text{З}_{\text{о}} = (\salaryPerHourFst \cdot \num{\employmentFst} + \salaryPerHourSnd \cdot \num{\employmentSnd}) \cdot \num{\workingHoursInDay} \cdot \num{\bonusRate} = \SI{\totalSalary}{\text{\byr}} \text{\,.}
 \end{equation}
 
 Дополнительная заработная плата включает выплаты предусмотренные законодательством от труде и определяется по нормативу в процентах от основной заработной платы
@@ -473,7 +473,7 @@
 \begin{equation}
   \label{eq:econ:additional_salary_calc}
   \text{З}_{\text{д}} =
-    \frac{\num{\totalSalary} \times 20\%}
+    \frac{\num{\totalSalary} \cdot 20\%}
          {100\%} \approx \SI{\additionalSalary}{\text{\byr}} \text{\,.}
 \end{equation}
 
@@ -592,7 +592,7 @@
 \begin{equation}
   \label{eq:econ:income_with_taxes_calc}
   \text{П}_\text{ч} =
-    \num{\income} \times \left( 1 - \frac{\num{\taxForIncome\%}}{100\%} \right) = \SI{\incomeWithTaxes}{\text{\byr}} \text{\,.}
+    \num{\income} \cdot \left( 1 - \frac{\num{\taxForIncome\%}}{100\%} \right) = \SI{\incomeWithTaxes}{\text{\byr}} \text{\,.}
 \end{equation}
 
 Программное обеспечение разрабатывалось для одного заказчика в связи с этим экономическим эффектом разработчика будет являться чистая прибыль от реализации~$ \text{П}_\text{ч} $.
@@ -674,10 +674,8 @@
 \end{table}
 
 \subsection{Выводы по технико-экономическому обоснованию}
-Программное средство для верификации алгоритмов тестирования оперативных запоминающих устройств является выгодным программным продуктом.
-Чистая прибыль от реализации ПС ($ \text{П}_\text{ч} $ \num{\incomeWithTaxes} рублей) остается организации-разработчику и представляет собой экономический эффект от создания нового программного средства.
+ПС для верификации алгоритмов тестирования ОЗУ является выгодным программным продуктом. Чистая прибыль от реализации ПС ($ \text{П}_\text{ч} $ \num{\incomeWithTaxes} рублей) остается организации-разработчику и представляет собой экономический эффект от создания нового программного средства.
 Прогнозируемая отпускная цена ($\text{Ц}_\text{о}$) составляет \num{\sellingPrice} рублей. Таким образом, данная разработка является экономически целесообразной.
-В итоге было произведено технико-экономическое обоснование разрабатываемого проекта, составлена смета затрат и рассчитана прогнозируемая прибыль, а также показана экономическая целесообразность разработки.
 
 \hfill
 \clearpage
