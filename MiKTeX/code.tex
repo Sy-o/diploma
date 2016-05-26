@@ -1,0 +1,1373 @@
+\sectioncentered*{ПРИЛОЖЕНИЕ А}
+\addcontentsline{toc}{section}{Приложение А Исходный код программного средства.}
+\begin{center}
+\vspace{-1em}
+\textbf{ (обязательное)}
+
+\textbf{Исходный код программного средства}
+\end{center}
+
+
+\begin{lstlisting}[language=C++, style=cplusplusstyle]
+#pragma once
+#include "SimulatorObject.h"
+#include "BusPacket.h"
+#include "Rank.h"
+#include "Discharger.h"
+#include "FaultController.h"
+#include "Address.h"
+
+using namespace DRAMSim;
+
+namespace DRAMSim
+{
+	class MemoryController;
+	class DRAMDevice : public SimulatorObject
+	{
+		friend FaultController;
+	public:
+		DRAMDevice(MemoryController *mc, std::string faultFilePath = "");
+		~DRAMDevice();
+
+	public:
+		void receiveFromBus(BusPacket *packet);
+		void attachRanks(vector<Rank> *ranks);
+		void update() override;
+		void step() override;
+
+		void setRefreshWaitingFlag(int rank);
+		bool getRefreshWaitingFlag(int rank);
+		void powerDown(int rank);
+		void powerUp(int rank);
+
+		void dischargeCells(int cycleCount, int rank);
+
+	public:
+		uint16_t read(Address addr);
+		void write(Address addr, uint16_t data);
+		void invertBit(Address addr);
+
+	private:
+		uint16_t readBit(Address addr);
+
+	private:
+		vector<Rank> *ranks;
+		Discharger discharger;
+		FaultController faultController;
+	};
+}
+
+
+#include "DRAMDevice.h"
+#include "MemoryController.h"
+#include "SystemConfiguration.h"
+#include "Parsing.h"
+#include <vector>
+
+using namespace std;
+using namespace DRAMSim;
+
+DRAMDevice::DRAMDevice(MemoryController *mc, string faultFilePath)
+:faultController(this)
+{
+	currentClockCycle = 0;
+	ranks = new vector<Rank>();
+
+	for (size_t i = 0; i<NUM_RANKS; i++)
+	{
+		Rank r = Rank();
+		r.setId(i);
+		r.attachMemoryController(mc);
+		ranks->push_back(r);
+	}
+	discharger.Initialize();
+	if (!faultFilePath.empty())
+	{
+		vector<Fault> faults = ParseCSV(faultFilePath);
+		faultController.SetFaults(faults);
+	}
+}
+
+DRAMDevice::~DRAMDevice()
+{
+	ranks->clear();
+	delete(ranks);
+}
+
+void DRAMDevice::attachRanks(vector<Rank> *ranks)
+{
+	this->ranks = ranks;
+}
+
+void DRAMDevice::update()
+{
+	//updates the state of each of the objects
+	// NOTE - do not change order
+	for (size_t i = 0; i<NUM_RANKS; i++)
+	{
+		(*ranks)[i].update();
+	}
+}
+
+void DRAMDevice::step()
+{
+	for (size_t i = 0; i<NUM_RANKS; i++)
+	{
+		(*ranks)[i].step();
+	}
+	SimulatorObject::step();
+}
+
+void DRAMDevice::receiveFromBus(BusPacket *packet)
+{
+	if (packet->busPacketType == DATA)
+	{
+		faultController.DoFaults(packet->address, packet->data->getData());
+		(*ranks)[packet->address.rank].receiveFromBus(packet);
+	}
+	else
+	{
+		(*ranks)[packet->address.rank].receiveFromBus(packet);
+	}
+}
+
+uint16_t DRAMDevice::read(Address addr)
+{
+	return (*ranks)[addr.rank].banks[addr.bank].read(addr);
+}
+
+uint16_t DRAMDevice::readBit(Address addr)
+{
+	return (read(addr) & (1 << addr.bit)) ? 1 : 0;
+}
+
+void DRAMDevice::write(Address addr, uint16_t data)
+{	
+	faultController.DoFaults(addr, data);
+}
+
+void DRAMDevice::invertBit(Address addr)
+{
+	uint16_t oldBitValue = readBit(addr);
+	uint16_t newBitValue = oldBitValue ? 0 : 1;
+	faultController.DoOperationOnBit(addr, newBitValue, oldBitValue);
+}
+
+void DRAMDevice::setRefreshWaitingFlag(int rank)
+{
+	(*ranks)[rank].refreshWaiting = true;
+}
+
+bool DRAMDevice::getRefreshWaitingFlag(int rank)
+{
+	return (*ranks)[rank].refreshWaiting;
+}
+
+void DRAMDevice::powerDown(int rank)
+{
+	(*ranks)[rank].powerDown();
+}
+
+void DRAMDevice::powerUp(int rank)
+{
+	(*ranks)[rank].powerUp();
+}
+
+void DRAMDevice::dischargeCells(int cycleCount, int rank)
+{
+	std::vector<int> addrList = discharger.GetRandomAddressList(cycleCount);
+	(*ranks)[rank].dischargeCells(addrList);
+}
+
+#pragma once
+#include "BusPacket.h"
+#include "DRAMDevice.h"
+#include "Address.h"
+#include "Rank.h"
+
+class SAODCController
+{
+public:
+    SAODCController();
+    ~SAODCController();
+
+public:
+	void SetDRAMDevice(DRAMDevice *dram);
+    void UpdateRef(DRAMSim::BusPacket* packet);
+
+	void UpdateRef(Address addr, uint16_t data);
+	void UpdateTestSig(Address addr, uint16_t data);
+
+	int GetSignaturesSum();
+
+	bool ParityBitInZero(int signature);
+    int CalculateTestAndCompare();
+
+	void ClearTestSig();
+	void SetRefSignature(int signature);
+	int GetTestSignature();
+
+private:
+    // function calculates address sum of each changed bit in word
+    int GetAddress(Address addr, uint16_t data);
+	void AddParityBit(int &address);
+
+private:
+    int RefSignature;
+    int TestSignature;
+	DRAMDevice *dramDevice;
+};
+
+#include "SystemConfiguration.h"
+#include "SAODCController.h"
+
+using namespace DRAMSim;
+
+SAODCController::SAODCController()
+{
+	RefSignature = TestSignature = 0;
+	dramDevice = 0;
+}
+
+SAODCController::~SAODCController()
+{
+
+}
+
+void SAODCController::SetDRAMDevice(DRAMDevice *dram)
+{
+	dramDevice = dram;
+}
+
+void SAODCController::UpdateRef(BusPacket* packet)
+{
+    if (packet->busPacketType == DATA)
+    {
+		uint16_t oldData = dramDevice->read(packet->address);
+        uint16_t newData = packet->data->getData();
+       if (oldData != newData)
+            UpdateRef(packet->address, newData ^ oldData);
+    }
+}
+
+void SAODCController::UpdateRef(Address addr, uint16_t data)
+{
+	RefSignature ^= GetAddress(addr, data);
+}
+
+void SAODCController::UpdateTestSig(Address addr, uint16_t data)
+{
+	TestSignature ^= GetAddress(addr, data);
+}
+
+int SAODCController::GetSignaturesSum()
+{
+	return TestSignature ^ RefSignature;
+}
+
+int SAODCController::GetAddress(Address addr, uint16_t data)
+{
+    //get 'bit address sum'
+	if (!data) return 0;
+    
+	int bitSum = 0;
+    int bitCount  = 0; // '1' bit count
+    for (int i = 0; (unsigned)i < DEVICE_WIDTH; i++)
+    {
+        if (data & (1 << i))
+        {
+            bitSum ^= i;
+            bitCount++;
+        }
+    }
+
+    if (bitCount % 2 == 0)
+		addr.Clear();
+    
+	addr.bit = bitSum;
+	int address = addr.GetPhysical();
+
+	if (bitCount % 2 != 0)
+		AddParityBit(address);
+	
+	return address;
+}
+
+int SAODCController::CalculateTestAndCompare()
+{
+    TestSignature = 0;
+	for (int r = 0; r < NUM_RANKS; r++)
+	{
+		for (int b = 0; b < NUM_BANKS; b++)
+		{
+			for (int row = 0; row < NUM_ROWS; row++)
+			{
+				for (int col = 0; col < NUM_COLS; col++)
+				{
+					Address addr(r, b, row, col);
+					uint16_t data = dramDevice->read(addr);
+					UpdateTestSig(addr, data);
+				}
+			}
+		}
+	}
+
+	return GetSignaturesSum();
+}
+
+void SAODCController::ClearTestSig()
+{
+	TestSignature = 0;
+}
+
+void SAODCController::SetRefSignature(int signature)
+{
+	RefSignature = signature;
+}
+
+int SAODCController::GetTestSignature()
+{
+	return TestSignature;
+}
+
+void SAODCController::AddParityBit(int &address)
+{
+	address <<= 1;
+	address |= 1;
+}
+
+bool SAODCController::ParityBitInZero(int signature)
+{
+	return (signature & 1) == 0;
+}
+
+#pragma once
+#include "SimulatorObject.h"
+#include "SAODCController.h"
+#include "MarchTestController.h"
+#include "BusPacket.h"
+#include "AddressTranslator.h"
+#include "DRAMDevice.h"
+#include "Rank.h"
+
+class RegenerationController : public DRAMSim::SimulatorObject
+{
+public:
+	RegenerationController();
+	~RegenerationController();
+
+public:
+	void Initialize(DRAMDevice* dram);
+	void UpdateRefSignature(DRAMSim::BusPacket* packet);
+	void SetMarchTest(string marchTest);
+	void StartRefresh();
+	void update();
+
+private:
+	int GetMarchTestType(string marchTest);
+		
+private:
+	MarchTestController marchController;
+	SAODCController saodcController;
+    AddressTranslator addrTranslator;
+
+	DRAMDevice* dramDevice;
+
+    int lastError;
+
+	int refreshEndCycle;
+	int startMarchTestCycle;
+
+	bool needTest;
+	
+};
+
+#include "RegenerationController.h"
+#include "SystemConfiguration.h"
+#include "MarchDef.h"
+#include <iostream>
+
+RegenerationController::RegenerationController()
+{
+    currentClockCycle = 0;
+    lastError = 0;
+    dramDevice = 0;
+}
+
+RegenerationController::~RegenerationController()
+{
+}
+
+void RegenerationController::Initialize(DRAMDevice* dram)
+{
+	dramDevice = dram;
+    refreshEndCycle = 0;
+	startMarchTestCycle = 0;
+	saodcController.SetDRAMDevice(dram);
+	marchController.Initialize(dram);
+	needTest = false;
+}
+
+void RegenerationController::SetMarchTest(string marchTest)
+{
+	marchController.SetMarchTest(GetMarchTestType(marchTest));
+}
+
+int RegenerationController::GetMarchTestType(string marchTest)
+{
+	if (marchTest.compare("March C-") == 0)
+		return MARCH_C_MINUS;
+	if (marchTest.compare("March A") == 0)
+		return MARCH_A;
+	if (marchTest.compare("March B") == 0)
+		return MARCH_B;
+	if (marchTest.compare("March X") == 0)
+		return MARCH_X;
+	if (marchTest.compare("March Y") == 0)
+		return MARCH_Y;
+	if (marchTest.compare("MATS") == 0)
+		return MATS;
+	if (marchTest.compare("MATS+") == 0)
+		return MATS_PLUS;
+	if (marchTest.compare("MATS++") == 0)
+		return MATS_PLUS_PLUS;
+	return MATS;
+}
+
+void RegenerationController::StartRefresh()
+{
+	refreshEndCycle = currentClockCycle + tRFC - 1;
+    int err = saodcController.CalculateTestAndCompare();
+    if (err)
+	{
+        std::cout << "[Regeneration Controller] Detected error(s) in memory.\n      Signature Sum = " << err << "(" << addrTranslator.GetDescription(err>>1, true) << ")" << std::endl;
+        if (lastError)
+        {
+            needTest = true;
+            startMarchTestCycle = currentClockCycle + 1;
+        }
+        else
+        {
+			if (saodcController.ParityBitInZero(err))
+			{
+				//multiple errors
+				needTest = true;
+				startMarchTestCycle = currentClockCycle + 1;
+			}
+			else
+			{
+				//if it first time - let's decide that it was 1 error. Invert bit
+				lastError = err;
+				std::cout << "[Regeneration Controller] Try to restore the damaged cell." << std::endl;
+				Address addr(err >> 1, true);
+				dramDevice->invertBit(addr);
+			}
+        }		
+	}
+    else
+    {
+        lastError = 0;
+    }
+}
+
+void RegenerationController::update()
+{
+	if (currentClockCycle >= refreshEndCycle)
+		return;
+
+	if (needTest)
+	{
+		if (startMarchTestCycle == currentClockCycle)
+		{
+            std::cout << "[Regeneration Controller] March Test Started." << std::endl;
+            marchController.RunTest(saodcController.GetTestSignature());
+		}
+		else if (startMarchTestCycle < currentClockCycle)
+		{
+			marchController.Update();
+		}
+
+		if (marchController.TestCompleted())
+		{
+			if (!marchController.TestPassed())
+			{
+                std::cout << "[Regeneration Controller] March Test Failed." << std::endl;
+                //do smth in case of errors
+			}
+            else
+            {
+                std::cout << "[Regeneration Controller] March Test Passed." << std::endl;
+            }
+			marchController.Reset();
+			needTest = false;
+		}
+	}
+}
+
+void RegenerationController::UpdateRefSignature(DRAMSim::BusPacket* packet)
+{
+	saodcController.UpdateRef(packet);
+}
+
+#pragma once
+
+#include <vector>
+#include "DRAMDevice.h"
+#include "AddressTranslator.h"
+#include "SAODCController.h"
+#include "MarchDef.h"
+#include <vector>
+
+class MarchTestController
+{
+	struct State
+	{
+		bool testStarted;
+		bool testCompleted;
+		int phase;
+		bool testPassed;
+
+		State() { Clear(); }
+
+		void Clear()
+		{
+			testStarted = false;
+			testCompleted = false;
+			phase = 0;
+			testPassed = false;
+		}
+	};
+
+	struct MarchPhase
+	{
+		MarchDirection direction;
+		std::vector<MarchOperation> elements;
+	};
+
+public:
+	MarchTestController();
+	~MarchTestController();
+
+public:
+	void Initialize(DRAMDevice* dram);
+	void SetMarchTest(int marchTest);
+
+	void RunTest(int refSignature);
+	void Update();
+	bool TestCompleted();
+	bool TestPassed();
+	void Reset();
+
+private:
+	void RunElement(int element, int address, uint16_t &buffer, uint16_t& oldValue);
+
+private:
+	AddressTranslator addrTranslator;
+	SAODCController saodc;
+	State state;
+	std::vector<MarchPhase> phases;
+	DRAMDevice* dramDevice;
+	bool testPass;
+};
+
+#include "MarchTestController.h"
+#include "SystemConfiguration.h"
+#include <iostream>
+
+MarchTestController::MarchTestController()
+{
+	dramDevice = 0;
+}
+
+MarchTestController::~MarchTestController()
+{}
+
+void MarchTestController::Initialize(DRAMDevice* dram)
+{
+	dramDevice = dram;
+}
+
+void MarchTestController::SetMarchTest(int marchTest)
+{
+	phases.clear();
+	switch (marchTest)
+	{
+	case MARCH_C_MINUS:
+	{
+					phases.push_back({ MD_UP, { MO_RD, MO_WDC } });
+					phases.push_back({ MD_UP, { MO_RDC, MO_WD } });
+					phases.push_back({ MD_DOWN, { MO_RD, MO_WDC } });
+					phases.push_back({ MD_DOWN, { MO_RDC, MO_WD } });
+					phases.push_back({ MD_BOTH, { MO_RD } });
+					break;
+	}
+	case MARCH_B:
+	{
+					phases.push_back({ MD_UP, { MO_RD, MO_WDC, MO_RDC, MO_WD, MO_RD, MO_WDC } });
+					phases.push_back({ MD_UP, { MO_RDC, MO_WD, MO_WDC } });
+					phases.push_back({ MD_DOWN, { MO_RDC, MO_WD, MO_WDC, MO_WD } });
+					phases.push_back({ MD_DOWN, { MO_RD, MO_WDC, MO_WD } });
+					break;
+	}
+	case MARCH_A:
+	{
+					phases.push_back({ MD_UP, { MO_RD, MO_WDC, MO_WD, MO_WDC } });
+					phases.push_back({ MD_UP, { MO_RDC, MO_WD, MO_WDC } });
+					phases.push_back({ MD_DOWN, { MO_RDC, MO_WD, MO_WDC, MO_WD } });
+					phases.push_back({ MD_DOWN, { MO_RD, MO_WDC, MO_WD } });
+					break;
+	}
+	case MARCH_X:
+	{
+					phases.push_back({ MD_UP, { MO_RD, MO_WDC } });
+					phases.push_back({ MD_DOWN, { MO_RDC, MO_WD } });
+					phases.push_back({ MD_BOTH, { MO_RD } });
+					break;
+	}
+	case MARCH_Y:
+	{
+					phases.push_back({ MD_UP, { MO_RD, MO_WDC, MO_RDC } });
+					phases.push_back({ MD_DOWN, { MO_RDC, MO_WD, MO_RD } });
+					phases.push_back({ MD_BOTH, { MO_RD } });
+					break;
+	}
+	case MATS:
+	{
+					phases.push_back({ MD_UP, { MO_RD, MO_WDC } });
+					phases.push_back({ MD_DOWN, { MO_RDC } });
+					break;
+	}
+	case MATS_PLUS:
+	{
+					phases.push_back({ MD_UP, { MO_RD, MO_WDC } });
+					phases.push_back({ MD_DOWN, { MO_RDC, MO_WD } });
+					break;
+	}
+	case MATS_PLUS_PLUS:
+	{
+					phases.push_back({ MD_UP, { MO_RD, MO_WDC } });
+					phases.push_back({ MD_DOWN, { MO_RDC, MO_WD, MO_RD } });
+					break;
+	}
+	default:
+		break;
+	}
+}
+
+void MarchTestController::RunTest(int refSignature)
+{
+	Reset();
+	state.testStarted = true;
+	saodc.SetRefSignature(refSignature);
+}
+
+void MarchTestController::Update()
+{
+	if (!state.testStarted)
+		return;
+
+    saodc.ClearTestSig();
+
+	MarchPhase& phase = phases[state.phase];
+
+	int addrStart = 0;
+	int counter = 0;
+
+	int bottom = 0;
+	int top = NUM_BANKS * NUM_COLS * NUM_ROWS - 1;
+
+	if (phase.direction == MD_UP || phase.direction == MD_BOTH)
+	{
+		addrStart = bottom;
+		counter = 1;
+	}
+	else if (phase.direction == MD_DOWN)
+	{
+		addrStart = top;
+		counter = -1;
+	}
+
+	for (int addr = addrStart; addr >= bottom && addr <= top; addr += counter)
+	{
+		uint16_t buffer = 0;
+		uint16_t old = 0;
+		for (auto& el : phase.elements)
+		{
+			RunElement(el, addr, buffer, old);
+		}
+	}
+
+	int err = saodc.GetSignaturesSum();
+	if (err)
+	{
+		state.testPassed = false;
+        cout << "[MarchTest] Errors are detected while running phase!\n      Signature sum is " << err << "(" << addrTranslator.GetDescription(err>>1, true) << ")" << endl;
+	}
+
+	state.phase++;
+	if (state.phase == phases.size())
+	{
+		state.testCompleted = true;
+		state.testStarted = false;
+	}
+}
+
+void MarchTestController::RunElement(int element, int address, uint16_t &buffer, uint16_t& oldValue)
+{
+	Address addr(address, false);
+	uint16_t data = 0;
+
+	switch (element)
+	{
+	case MO_RD:
+		data = dramDevice->read(addr);
+		buffer = data;
+		break;
+	case MO_RDC:
+		data = dramDevice->read(addr);
+		buffer = ~data;
+		break;
+	case MO_WD:
+		dramDevice->write(addr, buffer);
+		break;
+	case MO_WDC:
+		dramDevice->write(addr, ~buffer);
+		break;
+	}
+
+	//convertData
+	if (element == MO_RD || element == MO_RDC)
+	{
+		saodc.UpdateTestSig(addr, data ^ oldValue);
+		oldValue = data;
+	}
+}
+
+bool MarchTestController::TestCompleted()
+{
+	return state.testCompleted;
+}
+
+bool MarchTestController::TestPassed()
+{
+	return state.testPassed;
+}
+
+void MarchTestController::Reset()
+{
+	state.testStarted = false;
+	state.testPassed = true;
+	state.testCompleted = false;
+	state.phase = 0;
+	saodc.ClearTestSig();
+}
+
+#pragma once
+
+#include <vector>
+
+enum MarchDirection
+{
+    MD_UP,
+    MD_DOWN,
+    MD_BOTH
+};
+
+enum MarchOperation
+{
+    MO_RD,
+    MO_RDC,
+    MO_WD,
+    MO_WDC
+};
+
+enum MarchTest
+{
+    MARCH_C_MINUS,
+    MARCH_B,
+	MARCH_A,
+	MARCH_Y,
+	MARCH_X,
+	MATS,
+	MATS_PLUS,
+	MATS_PLUS_PLUS
+};
+
+#pragma once
+
+enum FaultType
+{
+	NONE = 0,
+	SAF,
+	TF,
+	CFin,
+	CFid,
+	CFst,
+	AF
+};
+
+struct Fault
+{
+	FaultType type;
+	int victimValue;
+	int agressorValue;
+	int agressorAddress;
+	int victimAddress;
+};
+
+#pragma once
+#include "FaultDef.h"
+#include "Address.h"
+#include <stdint.h>
+#include <vector>
+
+namespace DRAMSim
+{
+	class DRAMDevice;
+}
+
+class FaultController
+{
+
+public:
+	FaultController(DRAMSim::DRAMDevice* dram);
+	~FaultController();
+
+public:
+	void SetFaults(std::vector<Fault>& faults);
+	bool IsFaulty(int address);
+	bool IsAgressor(int address);
+	void DoFaults(Address addr, uint16_t data);
+	void DoOperationOnBit(Address addr, uint16_t newVal, uint16_t oldVal);
+
+	Fault GetCellAttributes(int address, bool isAgressor);
+
+private:
+	void WriteBit(Address address, int val);
+	void InitSAFs();
+
+private: 
+	DRAMSim::DRAMDevice* dramDevice;
+	AddressTranslator translator;
+	std::vector<Fault> faultyCells;
+};
+
+#include "FaultController.h"
+#include "DRAMDevice.h"
+#include <algorithm>
+using namespace std;
+
+FaultController::FaultController(DRAMDevice* dram) : dramDevice(dram)
+{
+}
+
+FaultController::~FaultController()
+{
+}
+
+void FaultController::SetFaults(std::vector<Fault>& faults)
+{
+	faultyCells = faults;
+	auto it = find_if(faultyCells.begin(), faultyCells.end(), [](Fault f){return f.type == SAF; });
+	if (it != faultyCells.end())
+	{
+		InitSAFs();
+	}
+}
+
+void FaultController::InitSAFs()
+{
+	for (auto& f : faultyCells)
+	{
+		if (f.type == SAF)
+		{
+			Address addr(f.victimAddress, true);
+			(*dramDevice->ranks)[addr.rank].banks[addr.bank].writeBit(addr, f.victimValue == 1);
+		}
+	}
+}
+
+bool FaultController::IsFaulty(int address)
+{
+	auto it = find_if(faultyCells.begin(), faultyCells.end(), 
+		[address](Fault f){return f.victimAddress == address && f.type != AF; });
+	return it != faultyCells.end();
+}
+
+bool FaultController::IsAgressor(int address)
+{
+	auto it = find_if(faultyCells.begin(), faultyCells.end(), 
+		[address](Fault f){return f.agressorAddress == address; });
+	return it != faultyCells.end();
+}
+
+void FaultController::DoFaults(Address addr, uint16_t data)
+{
+	uint16_t oldData = dramDevice->read(addr);
+	uint16_t bitMask = oldData ^ data;
+	
+	for (unsigned i = 0; i < DEVICE_WIDTH; i++)
+	{
+		if (bitMask & (1 << i))
+		{
+			addr.bit = i;
+			DoOperationOnBit(addr, data & (1 << i) ? 1 : 0, oldData & (1 << i) ? 1 : 0);
+		}
+	}
+}
+
+void FaultController::DoOperationOnBit(Address address, uint16_t newVal, uint16_t oldVal)
+{
+	int addr = address.GetPhysical();
+	if (IsFaulty(addr))
+	{
+		Fault fault = GetCellAttributes(addr, false);
+		switch (fault.type)
+		{
+		case SAF: break;
+		case TF:
+		{
+				   if (oldVal != fault.victimValue)
+				   {
+					   WriteBit(address, newVal);
+				   }
+				   break;
+		}
+		case CFin:
+		{
+					 WriteBit(address, newVal);
+				     break;
+		}			
+		case CFid:
+		{
+					 WriteBit(address, newVal);
+					 break;
+		}
+		case CFst:
+		{
+					 if (newVal != fault.victimValue)
+						 WriteBit(address, newVal);
+					 else
+					 {
+						 Address agrAdr(fault.agressorAddress, true);
+						 if (dramDevice->readBit(agrAdr) == fault.agressorValue)
+							 WriteBit(address, newVal);
+					 }
+					 break;
+		}
+		default: break;
+		}
+	}
+	else
+	{
+		if (IsAgressor(addr))
+		{
+			Fault fault = GetCellAttributes(addr, true);			
+			switch (fault.type)
+			{
+			case CFin:
+			{
+						 if (newVal == fault.agressorValue && newVal != oldVal)
+						 {
+							 Address vicAdr(fault.victimAddress, true);
+							 (*dramDevice->ranks)[vicAdr.rank].banks[vicAdr.bank].invertBit(vicAdr);
+						 }
+						 break;
+			}
+			case CFid:
+			{
+						 if (newVal == fault.agressorValue && newVal != oldVal)
+						 {
+							 Address vicAdr(fault.victimAddress, true);
+							 WriteBit(vicAdr, fault.victimValue);
+						 }
+						 break;
+			}
+			case AF:
+			{
+					   Address vicAdr(fault.victimAddress, true);
+					   WriteBit(vicAdr, newVal);
+					   break;
+			}
+			default :
+				break;
+			}
+			WriteBit(address, newVal);
+		}
+		else
+		{
+			WriteBit(address, newVal);
+		}
+	}	
+}
+
+Fault FaultController::GetCellAttributes(int address, bool isAgressor)
+{
+	vector<Fault>::iterator it;
+	if (isAgressor)
+	{
+		it = find_if(faultyCells.begin(), faultyCells.end(), [address](Fault f){return f.agressorAddress == address; });
+	}
+	else
+	{
+		it = find_if(faultyCells.begin(), faultyCells.end(), [address](Fault f){return f.victimAddress == address && f.type != AF; });
+	}
+	if (it != faultyCells.end())
+		return *it;
+	else return Fault();
+}
+
+void FaultController::WriteBit(Address address, int val)
+{
+	(*dramDevice->ranks)[address.rank].banks[address.bank].writeBit(address, val == 1);
+}
+
+#pragma once
+#include <random>
+#include <vector>
+
+using namespace std;
+class default_random_engine;
+class exponential_distribution;
+
+class Discharger
+{
+public:
+    Discharger();
+    ~Discharger();
+
+public:
+    void Initialize();
+    vector<int> GetRandomAddressList(int curCycle);
+
+private:
+    std::random_device rd;
+    std::mt19937* gen;
+    std::uniform_int_distribution<>* uniformDist;
+};
+
+#include "Discharger.h"
+#include "SystemConfiguration.h"
+#include <math.h>
+
+using namespace std;
+
+Discharger::Discharger() : gen(0), uniformDist(0)
+{
+    
+}
+
+Discharger::~Discharger()
+{
+    delete uniformDist;
+}
+
+void Discharger::Initialize()
+{
+    gen = new std::mt19937(rd());
+    int totalBits = NUM_RANKS * NUM_BANKS * NUM_ROWS * NUM_COLS * DEVICE_WIDTH;
+    uniformDist = new std::uniform_int_distribution<>(0, totalBits - 1);
+}
+
+vector<int> Discharger::GetRandomAddressList(int curCycle)
+{
+    vector<int> addrList;
+    double number = exp(sqrt(curCycle)/5.2);
+    int addrCount = (int)number;
+    
+    for (int i = 0; i < addrCount; i++)
+    {
+        addrList.push_back((*uniformDist)(*gen));
+    }
+    return addrList;
+}
+
+#pragma once
+#include <string>
+
+class AddressTranslator
+{
+public:
+    AddressTranslator();
+    ~AddressTranslator();
+
+	void Init();
+
+    void Translate(int address, int& rank, int& bank, int& row,  int& col);
+    void Translate(int address, int& rank, int& bank, int& row, int& col, int& bit);
+
+	int TranslateToAddr(int rank, int bank, int row, int col, int bit = -1);
+
+    std::string GetDescription(int address, bool includeBit);
+
+
+private:
+    int GetValue(int width, int& address);
+	void SetValue(int width, int value, int& address);
+
+private:
+	int RankWidth;
+    int BankWidth;
+    int RowWidth;
+    int ColWidth;
+    int CellWidth;
+};
+
+#include "AddressTranslator.h"
+#include "SystemConfiguration.h"
+#include <sstream>
+
+using namespace DRAMSim;
+
+AddressTranslator::AddressTranslator()
+{
+	Init();
+}
+
+AddressTranslator::~AddressTranslator()
+{}
+
+void AddressTranslator::Init()
+{
+	RankWidth = dramsim_log2(NUM_RANKS);
+	BankWidth = dramsim_log2(NUM_BANKS);
+	RowWidth = dramsim_log2(NUM_ROWS);
+	ColWidth = dramsim_log2(NUM_COLS);
+	CellWidth = dramsim_log2(DEVICE_WIDTH);
+}
+
+int AddressTranslator::GetValue(int width, int& address)
+{
+    int temp = address;
+    temp >>= width;
+    temp <<= width;
+    int n = temp ^ address;
+    address >>= width;
+    return n;
+}
+
+void AddressTranslator::SetValue(int width, int value, int& address)
+{
+	address <<= width;
+	address |= value;	
+}
+
+void AddressTranslator::Translate(int address, int& rank, int& bank, int& row, int& col)
+{
+    col = GetValue(ColWidth, address);
+    row = GetValue(RowWidth, address);
+    bank = GetValue(BankWidth, address);
+	rank = GetValue(RankWidth, address);
+}
+
+void AddressTranslator::Translate(int address, int& rank, int& bank, int& row, int& col, int& bit)
+{
+    bit = GetValue(CellWidth, address);
+    col = GetValue(ColWidth, address);
+    row = GetValue(RowWidth, address);
+    bank = GetValue(BankWidth, address);
+	rank = GetValue(RankWidth, address);
+}
+
+int AddressTranslator::TranslateToAddr(int rank, int bank, int row, int col, int bit)
+{
+	int address = 0;
+	SetValue(RankWidth, rank, address);
+	SetValue(BankWidth, bank, address);
+	SetValue(RowWidth, row, address);
+	SetValue(ColWidth, col, address);
+	if (bit >= 0)
+		SetValue(CellWidth, bit, address);
+	return address;
+}
+
+std::string AddressTranslator::GetDescription(int address, bool includeBit)
+{
+    std::ostringstream stream;
+    int r = 0, b = 0, row = 0, col = 0, bit = 0;
+    if (includeBit)
+        Translate(address, r, b, row, col, bit);
+    else
+        Translate(address, r, b, row, col);
+
+    stream << "r:" << r << ", b:" << b << ", row:" << row << ", col:" << col;
+    if (includeBit)
+        stream << ", bit:" << bit;
+   return stream.str();    
+}
+
+#pragma once
+#include "AddressTranslator.h"
+
+struct Address
+{
+public:
+	Address(int r = 0, int b = 0, int row = 0, int col = 0, int bit = 0);
+	Address(int address, bool full);
+
+	void Clear();
+	int GetPhysical();
+
+	friend bool operator==(const Address& a, const Address& b)
+	{
+		return a.rank == b.rank &&
+			   a.bank == b.bank &&
+			   a.row == b.row &&
+			   a.col == b.col &&
+			   a.bit == b.bit;	
+	}
+
+public:
+	int rank;
+	int bank;
+	int row;
+	int col;
+	int bit;
+
+public:
+	static void InitTranslator();
+	static AddressTranslator translator;
+};
+
+#include "Address.h"
+#include "SystemConfiguration.h"
+
+AddressTranslator Address::translator;
+
+Address::Address(int r, int b, int row, int col, int bit)
+: rank(r), bank(b), row(row), col(col), bit(bit)
+{
+}
+
+Address::Address(int address, bool full)
+{
+	Clear();
+	if (full)
+		translator.Translate(address, rank, bank, row, col, bit);
+	else
+		translator.Translate(address, rank, bank, row, col);	
+}
+
+void Address::Clear()
+{
+	rank = bank = row = col = bit = 0;
+}
+
+int Address::GetPhysical()
+{
+	return translator.TranslateToAddr(rank, bank, row, col, bit);
+}
+
+void Address::InitTranslator()
+{
+	translator.Init();
+}
+
+FaultType GetFaultTypeFromString(string type)
+{
+	if (type == "SAF") return SAF;
+	if (type == "TF") return TF;
+	if (type == "CFin") return CFin;
+	if (type == "CFid") return CFid;
+	if (type == "CFst") return CFst;
+	if (type == "AF") return AF;
+	return NONE;
+}
+
+vector<Fault> ParseCSV(string filePath)
+{
+	vector<Fault> faults;
+	ifstream file(filePath);
+	while (file.good())
+	{
+		string line;
+		getline(file, line);
+
+		Fault* fault = 0;
+		int paramCount = 0;
+
+		stringstream strstr(line);
+		string value = "";
+
+		while (getline(strstr, value, '\t'))
+		{
+			if (value == "SAF" || value == "TF" || value == "CFid" || value == "CFin" || value == "CFst" || value == "AF")
+			{
+				if (GetFaultTypeFromString(value) != NONE)
+				{
+					faults.push_back(Fault());
+					fault = &faults.back();
+					fault->type = GetFaultTypeFromString(value);
+				}
+			}
+			else
+			{
+				if (fault)
+				{
+					paramCount++;
+					switch (fault->type)
+					{
+					case SAF:
+					case TF:
+						if (paramCount == 1)
+						{
+							istringstream iss(value.substr(2));
+							iss >> hex >> fault->victimAddress;
+						}
+						if (paramCount == 2)
+						{
+							istringstream iss(value);
+							iss >> dec >> fault->victimValue;
+						}
+						break;
+					case CFid:
+					case CFst:
+						if (paramCount == 1 || paramCount == 3)
+						{
+							istringstream iss(value.substr(2));
+							if (paramCount == 1)
+								iss >> hex >> fault->victimAddress;
+							else
+								iss >> hex >> fault->agressorAddress;
+						}
+						if (paramCount == 2 || paramCount == 4)
+						{
+							istringstream iss(value);
+							if (paramCount == 2)
+								iss >> dec >> fault->victimValue;
+							else
+								iss >> dec >> fault->agressorValue;
+						}
+						break;
+					case CFin:
+						if (paramCount == 1 || paramCount == 3)
+						{
+							istringstream iss(value.substr(2));
+							if (paramCount == 1)
+								iss >> hex >> fault->victimAddress;
+							else
+								iss >> hex >> fault->agressorAddress;
+						}
+						if (paramCount == 4)
+						{
+							istringstream iss(value);
+							iss >> dec >> fault->agressorValue;
+						}
+						break;
+					case AF:
+						if (paramCount == 1 || paramCount == 3)
+						{
+							istringstream iss(value.substr(2));
+							if (paramCount == 1)
+								iss >> hex >> fault->victimAddress;
+							else
+								iss >> hex >> fault->agressorAddress;
+						}
+					}
+				}
+			}
+		}
+	}
+	return faults;
+}
+\end{lstlisting}
