@@ -81,7 +81,7 @@ void Bank::writeBit(int row, int col, int bit, bool set)
 \begin{equation}
   \label{eq:arch_and_mod:memory_discharge:uniform_func}
   P(i|a,b) = \frac{1}
-           {b-a+1}, a \le i \ge b
+           {b-a+1}, a \le i \ge b.
 \end{equation}
 
 Плотность распределения показана на рисунке~\ref{fig:arch_and_mod:modules:uniform_distribution}.
@@ -98,7 +98,7 @@ void Bank::writeBit(int row, int col, int bit, bool set)
 \begin{equation}
   \label{eq:arch_and_mod:memory_discharge:e_func}
   f(t) = e^{\frac{\sqrt{t}}
-           {5.2}}
+           {5.2}}.
 \end{equation}
 
 По умолчанию период обновления памяти $T_{refresh}$ = 2600 циклов. 1 цикл равен 3 нсек. Таким образом каждые 7800 нсек память должна обновляться. В итоге в соответствии с формулой примерно через 2000 циклов(с учетом погрешности генератора адресов, т.к. один и тот же адрес может сгенерироваться несколько раз) все ячейки обернутся в 0, если соответствующий процесс регенерации памяти так и не был запущен. График функции представлен на рисунке ~\ref{fig:arch_and_mod:memory_discharge:efunc_grafic}.
